@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "STIGA Mäh-Roboter einrichten",
+        "description": "Melde dich mit deinen STIGA.GO App-Zugangsdaten an.",
+        "data": {
+          "email": "E-Mail-Adresse",
+          "password": "Passwort"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Falsche E-Mail-Adresse oder falsches Passwort.",
+      "cannot_connect": "Verbindung zur STIGA Cloud fehlgeschlagen. Bitte Internetverbindung prüfen.",
+      "no_devices": "Keine STIGA-Geräte in diesem Konto gefunden.",
+      "unknown": "Unbekannter Fehler. Bitte Protokoll prüfen."
+    },
+    "abort": {
+      "already_configured": "Dieses STIGA-Konto ist bereits eingerichtet."
+    }
+  }
+}

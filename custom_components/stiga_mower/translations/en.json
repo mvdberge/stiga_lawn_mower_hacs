@@ -1,0 +1,23 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up STIGA Robot Mower",
+        "description": "Sign in with your STIGA.GO app credentials.",
+        "data": {
+          "email": "Email address",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Invalid email address or password.",
+      "cannot_connect": "Failed to connect to STIGA Cloud. Please check your internet connection.",
+      "no_devices": "No STIGA devices found in this account.",
+      "unknown": "Unknown error. Please check the logs."
+    },
+    "abort": {
+      "already_configured": "This STIGA account is already configured."
+    }
+  }
+}

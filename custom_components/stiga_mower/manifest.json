@@ -1,0 +1,12 @@
+{
+  "domain": "stiga_mower",
+  "name": "STIGA Mäh-Roboter",
+  "version": "1.0.0",
+  "documentation": "https://github.com/yourusername/stiga_mower_ha",
+  "issue_tracker": "https://github.com/yourusername/stiga_mower_ha/issues",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": [],
+  "iot_class": "cloud_polling",
+  "config_flow": true
+}

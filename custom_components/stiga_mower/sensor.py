@@ -35,10 +35,10 @@ class StigaSensorDescription(SensorEntityDescription):
 
 
 SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
+    # Sensors with a standard device_class get their name from HA's built-in translations.
     StigaSensorDescription(
         key="battery_level",
         status_key="battery_level",
-        name="Battery Level",
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
@@ -46,7 +46,6 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_voltage",
         status_key="battery_voltage",
-        name="Battery Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -56,7 +55,6 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_power_w",
         status_key="battery_power_w",
-        name="Power Consumption",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -65,7 +63,6 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_current",
         status_key="battery_current",
-        name="Charging Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -74,16 +71,16 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_time_left",
         status_key="battery_time_left",
-        name="Remaining Runtime",
         native_unit_of_measurement=UnitOfTime.MINUTES,
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
     ),
+    # Sensors without a device_class use translation_key for localised names.
     StigaSensorDescription(
         key="battery_cycles",
         status_key="battery_cycles",
-        name="Charge Cycles",
+        translation_key="battery_cycles",
         native_unit_of_measurement="cycles",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_registry_enabled_default=True,
@@ -91,7 +88,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_health",
         status_key="battery_health",
-        name="Battery Health",
+        translation_key="battery_health",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
@@ -99,7 +96,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_capacity",
         status_key="battery_capacity",
-        name="Battery Capacity (total)",
+        translation_key="battery_capacity",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
@@ -107,7 +104,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_remaining",
         status_key="battery_remaining",
-        name="Remaining Capacity",
+        translation_key="battery_remaining",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,

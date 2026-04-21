@@ -18,6 +18,16 @@
           "email": "The email address you use to log in to the STIGA.GO app.",
           "password": "Your STIGA.GO app password."
         }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate STIGA Lawn Mower",
+        "description": "The credentials for **{email}** are no longer valid. Please enter your password to continue.",
+        "data": {
+          "password": "Password"
+        },
+        "data_description": {
+          "password": "Your current STIGA.GO app password."
+        }
       }
     },
     "error": {
@@ -27,7 +37,16 @@
       "unknown": "Unexpected error. Please check the logs."
     },
     "abort": {
-      "already_configured": "This STIGA account is already configured."
+      "already_configured": "This STIGA account is already configured.",
+      "reauth_successful": "Re-authentication was successful."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery_cycles":   { "name": "Charge Cycles" },
+      "battery_health":   { "name": "Battery Health" },
+      "battery_capacity": { "name": "Battery Capacity" },
+      "battery_remaining": { "name": "Remaining Capacity" }
     }
   }
 }

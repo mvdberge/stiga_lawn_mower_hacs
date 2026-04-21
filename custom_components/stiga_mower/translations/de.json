@@ -18,6 +18,16 @@
           "email": "Die E-Mail-Adresse, mit der du dich in der STIGA.GO App anmeldest.",
           "password": "Dein STIGA.GO App-Passwort."
         }
+      },
+      "reauth_confirm": {
+        "title": "STIGA Mäh-Roboter erneut authentifizieren",
+        "description": "Die Zugangsdaten für **{email}** sind nicht mehr gültig. Bitte gib dein Passwort ein, um fortzufahren.",
+        "data": {
+          "password": "Passwort"
+        },
+        "data_description": {
+          "password": "Dein aktuelles STIGA.GO App-Passwort."
+        }
       }
     },
     "error": {
@@ -27,7 +37,16 @@
       "unknown": "Unbekannter Fehler. Bitte Protokoll prüfen."
     },
     "abort": {
-      "already_configured": "Dieses STIGA-Konto ist bereits eingerichtet."
+      "already_configured": "Dieses STIGA-Konto ist bereits eingerichtet.",
+      "reauth_successful": "Erneute Authentifizierung war erfolgreich."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "battery_cycles":    { "name": "Ladezyklen" },
+      "battery_health":    { "name": "Batteriezustand" },
+      "battery_capacity":  { "name": "Batteriekapazität" },
+      "battery_remaining": { "name": "Verbleibende Kapazität" }
     }
   }
 }

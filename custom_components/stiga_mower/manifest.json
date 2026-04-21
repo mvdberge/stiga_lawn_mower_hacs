@@ -1,9 +1,9 @@
 {
   "domain": "stiga_mower",
   "name": "STIGA Lawn Mower",
-  "version": "1.0.0",
-  "documentation": "https://github.com/yourusername/stiga_mower_ha",
-  "issue_tracker": "https://github.com/yourusername/stiga_mower_ha/issues",
+  "version": "1.0.1",
+  "documentation": "https://github.com/mvdberge/stiga_lawn_mower_hacs",
+  "issue_tracker": "https://github.com/mvdberge/stiga_lawn_mower_hacs/issues",
   "dependencies": [],
   "codeowners": [],
   "requirements": [],

@@ -12,8 +12,8 @@ Communicates directly with the official **STIGA Integration REST API**.
 
 All STIGA robots that can be controlled via the **STIGA.GO app**:
 
-- Vista models: A 6v, A 8v, A 10v, A 15v, A 25v, A 50v, A 100v, A 140v
-- A-Series: A 4, A 8, A 1500, A 3000
+- Vista models: A 6v, A 8v, A 10v, A 15v, ...
+- A-Series: A 1500, A 3000, ...
 
 ---
 

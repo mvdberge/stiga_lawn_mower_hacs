@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.1] - 2026-04-21
+### Fixed
+- Mower state now correctly uses `currentAction` (what the robot is doing) instead of `mowingMode` (how the session was started), fixing incorrect "docked" state during scheduled mowing sessions
+- `BORDER_CUTTING` and other `currentAction` values are now correctly mapped to `mowing`
+- Sensor values are now kept from the last successful update instead of dropping to unavailable on transient errors
+
+### Changed
+- Device list is fetched once at startup (`_async_setup`) instead of on every 30-second poll, significantly reducing update cycle duration
+- Each update cycle now has a hard 25-second timeout to prevent a slow API from blocking the event loop
+- Invalid credentials now immediately stop update retries and prompt re-authentication in Home Assistant
+- Empty device list from API is now treated as an error instead of silently succeeding
+- JSON parse failures in API responses are now logged as warnings
+
+---
+
 ## [1.1.0] - 2026-04-21
 ### Added
 - Persistent repair issue in Settings → Repairs after 3 consecutive cloud connection failures (auto-resolves on reconnect)

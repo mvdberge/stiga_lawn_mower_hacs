@@ -1,4 +1,4 @@
-"""STIGA LawnMower Entity für Home Assistant."""
+"""STIGA LawnMower entity for Home Assistant."""
 
 from __future__ import annotations
 
@@ -36,14 +36,14 @@ from .coordinator import StigaDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Zustandsmapping: STIGA-Modus → LawnMowerActivity
-# Tatsächliche API-Werte: Strings bei vista_robot, Integers bei älteren Modellen
+# State mapping: STIGA mode → LawnMowerActivity
+# Actual API values: strings for vista_robot, integers for older models
 MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
-    # String-Codes (vista_robot / neue Modelle)
+    # String codes (vista_robot / newer models)
     "WORKING":      LawnMowerActivity.MOWING,
     "BORDER":       LawnMowerActivity.MOWING,
     "MANUAL":       LawnMowerActivity.MOWING,
-    "GOING_HOME":   LawnMowerActivity.PAUSED,   # kein RETURNING in HA, nächster passender Zustand
+    "GOING_HOME":   LawnMowerActivity.PAUSED,   # no RETURNING in HA, closest matching state
     "PAUSE":        LawnMowerActivity.PAUSED,
     "IDLE":         LawnMowerActivity.DOCKED,
     "CHARGING":     LawnMowerActivity.DOCKED,
@@ -52,7 +52,7 @@ MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
     "UPDATING":     LawnMowerActivity.DOCKED,
     "ERROR":        LawnMowerActivity.ERROR,
     "LOCKED":       LawnMowerActivity.ERROR,
-    # Integer-Codes (ältere autonomous_robot Modelle)
+    # Integer codes (older autonomous_robot models)
     1:  LawnMowerActivity.MOWING,
     7:  LawnMowerActivity.MOWING,
     2:  LawnMowerActivity.PAUSED,
@@ -64,25 +64,25 @@ MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
     0:  LawnMowerActivity.DOCKED,
 }
 
-# Für den Benutzer lesbare Statusbeschreibung (als Attribut)
+# Human-readable status label (used as attribute)
 MOWING_MODE_LABELS: dict[Any, str] = {
-    "WORKING":    "Mäht",
-    "BORDER":     "Randfahrt",
-    "MANUAL":     "Manuell",
-    "GOING_HOME": "Kehrt zur Station zurück",
-    "PAUSE":      "Pausiert",
-    "IDLE":       "Bereit",
-    "CHARGING":   "Lädt",
-    "SCHEDULED":  "Geplant",
-    "SLEEPING":   "Schläft",
-    "UPDATING":   "Update",
-    "ERROR":      "Fehler",
-    "LOCKED":     "Gesperrt",
-    1: "Mäht",           2: "Kehrt zurück",
-    3: "Pausiert",       4: "Fehler",
-    5: "Schläft/Lädt",  6: "Gesperrt",
-    7: "Randfahrt",      8: "Geplant",
-    0: "Unbekannt",
+    "WORKING":    "Mowing",
+    "BORDER":     "Border mowing",
+    "MANUAL":     "Manual",
+    "GOING_HOME": "Returning to dock",
+    "PAUSE":      "Paused",
+    "IDLE":       "Ready",
+    "CHARGING":   "Charging",
+    "SCHEDULED":  "Scheduled",
+    "SLEEPING":   "Sleeping",
+    "UPDATING":   "Updating",
+    "ERROR":      "Error",
+    "LOCKED":     "Locked",
+    1: "Mowing",              2: "Returning",
+    3: "Paused",              4: "Error",
+    5: "Sleeping/Charging",   6: "Locked",
+    7: "Border mowing",       8: "Scheduled",
+    0: "Unknown",
 }
 
 
@@ -91,7 +91,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """LawnMower Entities für alle STIGA-Roboter einrichten."""
+    """Set up LawnMower entities for all STIGA robots."""
     coordinator: StigaDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities = [
@@ -103,10 +103,10 @@ async def async_setup_entry(
 
 
 class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEntity):
-    """Repräsentiert einen STIGA Mäh-Roboter in Home Assistant."""
+    """Represents a STIGA robotic lawn mower in Home Assistant."""
 
     _attr_has_entity_name = True
-    _attr_name = None  # Name kommt vom Device
+    _attr_name = None  # Name comes from the device
     _attr_supported_features = (
         LawnMowerEntityFeature.START_MOWING
         | LawnMowerEntityFeature.DOCK
@@ -141,7 +141,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             serial_number=self._serial,
         )
 
-    # ------------------------------------------------------------------ Zustand
+    # ------------------------------------------------------------------ State
 
     @property
     def _status(self) -> dict:
@@ -154,7 +154,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             return None
         activity = MOWING_MODE_TO_ACTIVITY.get(mode)
         if activity is None:
-            _LOGGER.warning("Unbekannter mowingMode: %r – bitte als GitHub Issue melden", mode)
+            _LOGGER.warning("Unknown mowingMode: %r – please report as a GitHub issue", mode)
             return None
         return activity
 
@@ -162,7 +162,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     def battery_level(self) -> int | None:
         return self._status.get("battery_level")
 
-    # ------------------------------------------------------------------ Attribute
+    # ------------------------------------------------------------------ Attributes
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -176,7 +176,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             ATTR_DEVICE_TYPE:       self._dev_type,
         }
 
-        # Batterie-Details
+        # Battery details
         for key, attr in (
             ("battery_voltage",    ATTR_BATTERY_VOLTAGE),
             ("battery_capacity",   ATTR_BATTERY_CAPACITY),
@@ -192,46 +192,46 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             if val is not None:
                 attrs[attr] = val
 
-        # Ladezustand
+        # Charging state
         if s.get("battery_charging"):
             attrs["battery_charging"] = True
 
-        # Zusätzliche Felder aus der API (z.B. hasData, etc.)
+        # Additional fields from the API (e.g. hasData, etc.)
         for k, v in (s.get("extra") or {}).items():
             if v is not None:
                 attrs[f"extra_{k}"] = v
 
         return attrs
 
-    # ------------------------------------------------------------------ Befehle
+    # ------------------------------------------------------------------ Commands
 
     async def async_start_mowing(self) -> None:
-        """Mähsession starten."""
+        """Start a mowing session."""
         try:
             await self.coordinator.api.start_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Fehler beim Starten: %s", err)
+            _LOGGER.error("Error starting mowing: %s", err)
 
     async def async_dock(self) -> None:
-        """Roboter zur Ladestation schicken."""
+        """Send the robot to the charging dock."""
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Fehler beim Andocken: %s", err)
+            _LOGGER.error("Error docking: %s", err)
 
     async def async_pause(self) -> None:
         """
-        Mähsession pausieren.
-        STIGA hat keinen dedizierten Pause-Befehl in der öffentlichen API –
-        endsession schickt den Roboter zur Station (nächster sinnvoller Schritt).
+        Pause the mowing session.
+        STIGA has no dedicated pause command in the public API –
+        endsession sends the robot to the dock (closest sensible action).
         """
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Fehler beim Pausieren: %s", err)
+            _LOGGER.error("Error pausing: %s", err)
 
 
 def _dev_uuid(device: dict) -> str:

@@ -1,4 +1,4 @@
-"""Asynchroner Client für die STIGA Integration API."""
+"""Async client for the STIGA Integration API."""
 
 from __future__ import annotations
 
@@ -21,19 +21,19 @@ _LOGGER = logging.getLogger(__name__)
 
 
 class StigaAuthError(Exception):
-    """Authentifizierungsfehler."""
+    """Authentication error."""
 
 
 class StigaApiError(Exception):
-    """Allgemeiner API-Fehler."""
+    """General API error."""
 
 
 class StigaAPI:
     """
-    Asynchroner REST-Client für die STIGA Integration API.
+    Async REST client for the STIGA Integration API.
 
-    Authentifizierung über Firebase verifyPassword (idToken).
-    Alle STIGA-Endpunkte werden mit Bearer-Token autorisiert.
+    Authentication via Firebase verifyPassword (idToken).
+    All STIGA endpoints are authorized with a Bearer token.
     """
 
     def __init__(self, email: str, password: str, session: aiohttp.ClientSession) -> None:
@@ -45,7 +45,7 @@ class StigaAPI:
     # ------------------------------------------------------------------ Auth
 
     async def authenticate(self) -> None:
-        """Firebase-Login → speichert idToken intern."""
+        """Firebase login – stores idToken internally."""
         try:
             async with self._session.post(
                 FIREBASE_AUTH_URL,
@@ -59,11 +59,11 @@ class StigaAPI:
                 data = await resp.json()
                 if resp.status != 200:
                     msg = data.get("error", {}).get("message", str(resp.status))
-                    raise StigaAuthError(f"Authentifizierung fehlgeschlagen: {msg}")
+                    raise StigaAuthError(f"Authentication failed: {msg}")
                 self._token = data["idToken"]
-                _LOGGER.debug("Firebase-Authentifizierung erfolgreich.")
+                _LOGGER.debug("Firebase authentication successful.")
         except aiohttp.ClientError as err:
-            raise StigaApiError(f"Netzwerkfehler bei Authentifizierung: {err}") from err
+            raise StigaApiError(f"Network error during authentication: {err}") from err
 
     def _auth_header(self) -> dict:
         return {"Authorization": f"Bearer {self._token}"}
@@ -77,14 +77,14 @@ class StigaAPI:
                 headers=self._auth_header(),
             ) as resp:
                 if resp.status == 401 and retry:
-                    _LOGGER.debug("Token abgelaufen – erneute Anmeldung.")
+                    _LOGGER.debug("Token expired – re-authenticating.")
                     await self.authenticate()
                     return await self._get(path, retry=False)
                 if resp.status != 200:
                     raise StigaApiError(f"GET {path} → HTTP {resp.status}")
                 return await resp.json()
         except aiohttp.ClientError as err:
-            raise StigaApiError(f"Netzwerkfehler: {err}") from err
+            raise StigaApiError(f"Network error: {err}") from err
 
     async def _post(self, path: str, body=None, retry: bool = True):
         if not self._token:
@@ -105,14 +105,14 @@ class StigaAPI:
                 except Exception:
                     return None
         except aiohttp.ClientError as err:
-            raise StigaApiError(f"Netzwerkfehler: {err}") from err
+            raise StigaApiError(f"Network error: {err}") from err
 
-    # ------------------------------------------------------------------ Geräte
+    # ------------------------------------------------------------------ Devices
 
     async def get_devices(self) -> list[dict]:
         """
         GET /garage/integration
-        Laut offizieller Doku: { "Data": [ { "type": ..., "attributes": { uuid, name, ... } } ] }
+        Per official docs: { "Data": [ { "type": ..., "attributes": { uuid, name, ... } } ] }
         """
         raw = await self._get(EP_GARAGE)
         if isinstance(raw, list):
@@ -127,7 +127,7 @@ class StigaAPI:
     # ------------------------------------------------------------------ Status
 
     async def get_device_status(self, uuid: str) -> dict:
-        """GET /devices/{uuid}/mqttstatus – Rohstatus abrufen und parsen."""
+        """GET /devices/{uuid}/mqttstatus – fetch and parse raw status."""
         raw = await self._get(EP_STATUS.format(uuid=uuid))
         return self._parse_status(raw)
 
@@ -142,13 +142,13 @@ class StigaAPI:
 
     def _parse_status(self, raw: dict) -> dict:
         """
-        Wertet den mqttstatus aus.
-        Bekannte Struktur (vista_robot):
+        Parse the mqttstatus response.
+        Known structure (vista_robot):
           raw["data"]["attributes"]["device_info"]
-            "status":  { "description": JSON-String }
-            "battery": { "description": JSON-String }
+            "status":  { "description": JSON string }
+            "battery": { "description": JSON string }
         """
-        # Struktur 1: data.attributes.device_info (vista_robot, autonomous_robot)
+        # Structure 1: data.attributes.device_info (vista_robot, autonomous_robot)
         try:
             info   = raw["data"]["attributes"]["device_info"]
             status = self._load_json_field(info["status"]["description"])
@@ -157,21 +157,21 @@ class StigaAPI:
         except (KeyError, TypeError):
             pass
 
-        # Struktur 2: flach im Root
+        # Structure 2: flat at root
         if "mowingMode" in raw or "currentAction" in raw:
             return self._build_status(raw, raw.get("battery") or {})
 
-        # Struktur 3: unter 'attributes'
+        # Structure 3: under 'attributes'
         attrs = raw.get("attributes") or {}
         if "mowingMode" in attrs:
             return self._build_status(attrs, attrs.get("battery") or {})
 
-        _LOGGER.warning("Unbekannte Status-Struktur: %s", list(raw.keys()))
+        _LOGGER.warning("Unknown status structure: %s", list(raw.keys()))
         return {}
 
     @staticmethod
     def _build_status(s: dict, b: dict) -> dict:
-        """Flaches Status-Dict aus API-Rohdaten aufbauen."""
+        """Build a flat status dict from raw API data."""
         ca      = s.get("currentAction")
         mm      = s.get("mowingMode") or ca
         pct     = b.get("percentage")
@@ -206,14 +206,14 @@ class StigaAPI:
             "battery_current":   round(current, 4) if current is not None else None,
             "battery_power_w":   power_w,
             "battery_health":    health,
-            # Weitere Rohfelder
+            # Additional raw fields
             "extra": {
                 k: v for k, v in s.items()
                 if k not in ("mowingMode", "currentAction", "errorCode")
             },
         }
 
-    # ------------------------------------------------------------------ Befehle
+    # ------------------------------------------------------------------ Commands
 
     async def start_mowing(self, uuid: str, zone_id: int | None = None) -> None:
         """POST /devices/{uuid}/command/startsession"""
@@ -224,10 +224,10 @@ class StigaAPI:
         """POST /devices/{uuid}/command/endsession"""
         await self._post(EP_STOP.format(uuid=uuid))
 
-    # ------------------------------------------------------------------ Test
+    # ------------------------------------------------------------------ Connection test
 
     async def test_connection(self) -> bool:
-        """Verbindungstest für den Config Flow."""
+        """Connection test for the config flow."""
         await self.authenticate()
         devices = await self.get_devices()
         return len(devices) > 0

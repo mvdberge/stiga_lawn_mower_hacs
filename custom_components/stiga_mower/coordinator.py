@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator für STIGA Mäh-Roboter."""
+"""DataUpdateCoordinator for STIGA robotic lawn mowers."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ _LOGGER = logging.getLogger(__name__)
 
 class StigaDataUpdateCoordinator(DataUpdateCoordinator):
     """
-    Zentraler Koordinator für alle STIGA-Geräte.
-    Ruft alle Geräte + deren Status in einem Zug ab.
+    Central coordinator for all STIGA devices.
+    Fetches all devices and their statuses in a single pass.
 
-    data-Struktur nach Update:
+    data structure after update:
     {
         "devices": [ { "attributes": { "uuid": ..., "name": ..., ... } }, ... ],
         "statuses": {
@@ -44,7 +44,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_update_data(self) -> dict:
-        """Daten von der STIGA API abrufen."""
+        """Fetch data from the STIGA API."""
         try:
             devices = await self.api.get_devices()
             statuses: dict[str, dict] = {}
@@ -56,13 +56,13 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
                 try:
                     statuses[uuid] = await self.api.get_device_status(uuid)
                 except StigaApiError as err:
-                    _LOGGER.warning("Status für %s nicht abrufbar: %s", uuid, err)
+                    _LOGGER.warning("Could not fetch status for %s: %s", uuid, err)
                     statuses[uuid] = {}
 
             return {"devices": devices, "statuses": statuses}
 
         except StigaApiError as err:
-            raise UpdateFailed(f"STIGA API Fehler: {err}") from err
+            raise UpdateFailed(f"STIGA API error: {err}") from err
 
 
 def _device_uuid(device: dict) -> str:

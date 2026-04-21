@@ -1,4 +1,4 @@
-"""STIGA Sensor Entities – Batterie und Status als dedizierte Sensoren."""
+"""STIGA sensor entities – battery and status as dedicated sensors."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ from .coordinator import StigaDataUpdateCoordinator
 
 @dataclass(frozen=True, kw_only=True)
 class StigaSensorDescription(SensorEntityDescription):
-    """Erweiterte Sensor-Beschreibung mit API-Key."""
+    """Extended sensor description with API key."""
     status_key: str = ""
 
 
@@ -38,7 +38,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_level",
         status_key="battery_level",
-        name="Akkustand",
+        name="Battery Level",
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
@@ -46,7 +46,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_voltage",
         status_key="battery_voltage",
-        name="Akkuspannung",
+        name="Battery Voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -55,7 +55,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_power_w",
         status_key="battery_power_w",
-        name="Leistungsaufnahme",
+        name="Power Consumption",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -64,7 +64,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_current",
         status_key="battery_current",
-        name="Ladestrom",
+        name="Charging Current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -73,7 +73,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_time_left",
         status_key="battery_time_left",
-        name="Restlaufzeit",
+        name="Remaining Runtime",
         native_unit_of_measurement=UnitOfTime.MINUTES,
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
@@ -82,15 +82,15 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_cycles",
         status_key="battery_cycles",
-        name="Ladezyklen",
-        native_unit_of_measurement="Zyklen",
+        name="Charge Cycles",
+        native_unit_of_measurement="cycles",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_registry_enabled_default=True,
     ),
     StigaSensorDescription(
         key="battery_health",
         status_key="battery_health",
-        name="Akkugesundheit",
+        name="Battery Health",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
@@ -98,7 +98,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_capacity",
         status_key="battery_capacity",
-        name="Akkukapazität (gesamt)",
+        name="Battery Capacity (total)",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=False,
@@ -106,7 +106,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_remaining",
         status_key="battery_remaining",
-        name="Verbleibende Kapazität",
+        name="Remaining Capacity",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
@@ -119,7 +119,7 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Sensor Entities für alle STIGA-Roboter einrichten."""
+    """Set up sensor entities for all STIGA robots."""
     coordinator: StigaDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities: list[StigaSensor] = []
@@ -134,7 +134,7 @@ async def async_setup_entry(
 
 
 class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
-    """Ein einzelner STIGA Sensor (z.B. Akkustand, Spannung, ...)."""
+    """A single STIGA sensor (e.g. battery level, voltage, ...)."""
 
     _attr_has_entity_name = True
     entity_description: StigaSensorDescription

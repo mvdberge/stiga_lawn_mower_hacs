@@ -1,4 +1,4 @@
-"""STIGA Mäh-Roboter Integration für Home Assistant."""
+"""STIGA lawn mower integration for Home Assistant."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ PLATFORMS: list[Platform] = [Platform.LAWN_MOWER, Platform.SENSOR]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Integration einrichten."""
+    """Set up the integration."""
     session = async_get_clientsession(hass)
     api = StigaAPI(
         email=entry.data[CONF_EMAIL],
@@ -37,7 +37,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Integration entladen."""
+    """Unload the integration."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id)

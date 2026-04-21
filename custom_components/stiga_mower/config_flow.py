@@ -1,4 +1,4 @@
-"""Config Flow für STIGA Mäh-Roboter."""
+"""Config flow for the STIGA lawn mower integration."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ STEP_USER_DATA_SCHEMA = vol.Schema(
 
 
 class StigaConfigFlow(ConfigFlow, domain=DOMAIN):
-    """Config Flow: Einrichtung über die Home Assistant UI."""
+    """Config flow: setup via the Home Assistant UI."""
 
     VERSION = 1
 
@@ -34,7 +34,7 @@ class StigaConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            # Nur einen Eintrag pro E-Mail-Adresse erlauben
+            # Only allow one entry per email address
             await self.async_set_unique_id(user_input[CONF_EMAIL].lower())
             self._abort_if_unique_id_configured()
 
@@ -59,7 +59,7 @@ class StigaConfigFlow(ConfigFlow, domain=DOMAIN):
             except StigaApiError:
                 errors["base"] = "cannot_connect"
             except Exception:
-                _LOGGER.exception("Unbekannter Fehler beim Setup")
+                _LOGGER.exception("Unexpected error during setup")
                 errors["base"] = "unknown"
 
         return self.async_show_form(

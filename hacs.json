@@ -1,5 +1,5 @@
 {
-  "name": "STIGA Mäh-Roboter",
+  "name": "STIGA Lawn Mower",
   "domain": "stiga_mower",
   "documentation": "https://github.com/yourusername/stiga_mower_ha",
   "homeassistant": "2023.9.0",

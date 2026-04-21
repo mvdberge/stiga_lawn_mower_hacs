@@ -168,6 +168,10 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         )
 
     @property
+    def available(self) -> bool:
+        return super().available and self._uuid in self.coordinator.data.get("statuses", {})
+
+    @property
     def native_value(self) -> Any:
         status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
         return status.get(self.entity_description.status_key)

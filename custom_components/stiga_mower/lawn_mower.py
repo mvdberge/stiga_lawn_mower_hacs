@@ -12,6 +12,7 @@ from homeassistant.components.lawn_mower import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -22,14 +23,6 @@ from .const import (
     ATTR_PRODUCT_CODE,
     ATTR_DEVICE_TYPE,
     ATTR_MOWING_MODE_RAW,
-    ATTR_BATTERY_VOLTAGE,
-    ATTR_BATTERY_CAPACITY,
-    ATTR_BATTERY_REMAINING,
-    ATTR_BATTERY_CYCLES,
-    ATTR_BATTERY_POWER,
-    ATTR_BATTERY_HEALTH,
-    ATTR_BATTERY_TIME_LEFT,
-    ATTR_BATTERY_CURRENT,
     ATTR_ERROR_CODE,
 )
 from .coordinator import StigaDataUpdateCoordinator
@@ -207,27 +200,12 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             ATTR_DEVICE_TYPE:        self._dev_type,
         }
 
-        # Battery details
-        for key, attr in (
-            ("battery_voltage",    ATTR_BATTERY_VOLTAGE),
-            ("battery_capacity",   ATTR_BATTERY_CAPACITY),
-            ("battery_remaining",  ATTR_BATTERY_REMAINING),
-            ("battery_cycles",     ATTR_BATTERY_CYCLES),
-            ("battery_power_w",    ATTR_BATTERY_POWER),
-            ("battery_health",     ATTR_BATTERY_HEALTH),
-            ("battery_time_left",  ATTR_BATTERY_TIME_LEFT),
-            ("battery_current",    ATTR_BATTERY_CURRENT),
-            ("error_code",         ATTR_ERROR_CODE),
-        ):
-            val = s.get(key)
-            if val is not None:
-                attrs[attr] = val
+        if (ec := s.get("error_code")) is not None:
+            attrs[ATTR_ERROR_CODE] = ec
 
-        # Charging state
         if s.get("battery_charging"):
             attrs["battery_charging"] = True
 
-        # Additional fields from the API (e.g. hasData, etc.)
         for k, v in (s.get("extra") or {}).items():
             if v is not None:
                 attrs[f"extra_{k}"] = v
@@ -242,11 +220,11 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             await self.coordinator.api.start_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Error starting mowing: %s", err)
+            raise HomeAssistantError(f"Could not start mowing: {err}") from err
 
     async def async_dock(self) -> None:
         """Send the robot to the charging dock."""
-        await self._stop_session("docking")
+        await self._stop_session("dock")
 
     async def async_pause(self) -> None:
         """
@@ -254,14 +232,14 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         STIGA has no dedicated pause command in the public API –
         endsession sends the robot to the dock (closest sensible action).
         """
-        await self._stop_session("pausing")
+        await self._stop_session("pause")
 
     async def _stop_session(self, context: str) -> None:
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Error during %s: %s", context, err)
+            raise HomeAssistantError(f"Could not send {context} command: {err}") from err
 
 
 def _dev_uuid(device: dict) -> str:

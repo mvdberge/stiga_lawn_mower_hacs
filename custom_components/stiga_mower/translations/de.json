@@ -13,6 +13,10 @@
         "data": {
           "email": "E-Mail-Adresse",
           "password": "Passwort"
+        },
+        "data_description": {
+          "email": "Die E-Mail-Adresse, mit der du dich in der STIGA.GO App anmeldest.",
+          "password": "Dein STIGA.GO App-Passwort."
         }
       }
     },

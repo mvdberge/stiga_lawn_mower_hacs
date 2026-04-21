@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0] - 2026-04-21
+### Added
+- Reauthentication flow for handling expired credentials
+
+### Changed
+- Refined display precision for sensor values
+- Removed redundant sensors to reduce entity clutter
+- Brand logo moved to the correct path
+- Improved translations
+
+### Fixed
+- Raised HomeAssistantError on errors for better error propagation
+
+---
+
 ## [1.2.0] - 2026-04-21
 ### Fixed
 - Mower state now correctly uses `currentAction` (what the robot is doing) instead of `mowingMode` (how the session was started), fixing incorrect "docked" state during scheduled mowing sessions
@@ -12,18 +27,6 @@
 - Invalid credentials now immediately stop update retries and prompt re-authentication in Home Assistant
 - Empty device list from API is now treated as an error instead of silently succeeding
 - JSON parse failures in API responses are now logged as warnings
-
----
-
-## [1.3.0] - 2026-04-21
-### Changed
-- Refined display precision for sensor values
-- Removed redundant sensors to reduce entity clutter
-- Brand logo moved to the correct path
-
-### Fixed
-- Raised HomeAssistantError on errors for better error propagation
-- Improved translations
 
 ---
 

@@ -15,6 +15,18 @@
 
 ---
 
+## [1.3.0] - 2026-04-21
+### Changed
+- Refined display precision for sensor values
+- Removed redundant sensors to reduce entity clutter
+- Brand logo moved to the correct path
+
+### Fixed
+- Raised HomeAssistantError on errors for better error propagation
+- Improved translations
+
+---
+
 ## [1.1.0] - 2026-04-21
 ### Added
 - Persistent repair issue in Settings → Repairs after 3 consecutive cloud connection failures (auto-resolves on reconnect)

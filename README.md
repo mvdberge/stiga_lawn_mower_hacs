@@ -1,87 +1,87 @@
-# STIGA Mäh-Roboter – Home Assistant Integration
+# STIGA Lawn Mower – Home Assistant Integration
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2023.9%2B-blue)](https://www.home-assistant.io/)
 
-Direkte Cloud-Integration für STIGA Mäh-Roboter (A-Series / Vista-Modelle) ohne MQTT-Umweg.  
-Kommuniziert direkt mit der offiziellen **STIGA Integration REST API**.
+Direct cloud integration for STIGA robotic lawn mowers (A-Series / Vista models) without any MQTT detour.  
+Communicates directly with the official **STIGA Integration REST API**.
 
 ---
 
-## Unterstützte Modelle
+## Supported Models
 
-Alle STIGA-Roboter, die über die **STIGA.GO App** gesteuert werden können:
+All STIGA robots that can be controlled via the **STIGA.GO app**:
 
-- Vista-Modelle: A 6v, A 8v, A 10v, A 15v, A 25v, A 50v, A 100v, A 140v
+- Vista models: A 6v, A 8v, A 10v, A 15v, A 25v, A 50v, A 100v, A 140v
 - A-Series: A 4, A 8, A 1500, A 3000
 
 ---
 
-## Funktionen
+## Features
 
 ### LawnMower Entity
-| Funktion | Beschreibung |
+| Feature | Description |
 |---|---|
-| **Mähen starten** | `lawn_mower.start_mowing` |
-| **Zur Station** | `lawn_mower.dock` |
-| **Pausieren** | `lawn_mower.pause` (sendet Rückkehr zur Station) |
-| **Zustand** | `mowing`, `docked`, `paused`, `error` |
-| **Akkustand** | Direkt an der Entity |
+| **Start mowing** | `lawn_mower.start_mowing` |
+| **Return to dock** | `lawn_mower.dock` |
+| **Pause** | `lawn_mower.pause` (sends return to dock) |
+| **State** | `mowing`, `docked`, `paused`, `error` |
+| **Battery level** | Directly on the entity |
 
-### Zusätzliche Sensor-Entities pro Roboter
-| Sensor | Einheit |
+### Additional Sensor Entities per Robot
+| Sensor | Unit |
 |---|---|
-| Akkustand | % |
-| Akkuspannung | V |
-| Leistungsaufnahme | W |
-| Ladestrom | A |
-| Restlaufzeit | min |
-| Ladezyklen | — |
-| Akkugesundheit | % |
-| Verbleibende Kapazität | mAh |
-| Gesamtkapazität | mAh |
+| Battery level | % |
+| Battery voltage | V |
+| Power consumption | W |
+| Charging current | A |
+| Remaining runtime | min |
+| Charge cycles | — |
+| Battery health | % |
+| Remaining capacity | mAh |
+| Total capacity | mAh |
 
-### Attribute der LawnMower Entity
-- `mowing_mode_raw` – Rohwert der API (`SCHEDULED`, `WORKING`, …)
-- `mowing_mode_label` – Deutsch lesbarer Status
+### LawnMower Entity Attributes
+- `mowing_mode_raw` – Raw API value (`SCHEDULED`, `WORKING`, …)
+- `mowing_mode_label` – Human-readable status
 - `serial_number`, `product_code`, `device_type`
-- Alle Batterie-Detailwerte
+- All battery detail values
 
 ---
 
 ## Installation
 
-### Via HACS (empfohlen)
+### Via HACS (recommended)
 
-1. HACS öffnen → **Integrationen** → Menü (⋮) → **Benutzerdefinierte Repositories**
-2. URL: `https://github.com/yourusername/stiga_mower_ha`  
-   Kategorie: **Integration**
-3. **STIGA Mäh-Roboter** suchen und installieren
-4. Home Assistant neu starten
+1. Open HACS → **Integrations** → Menu (⋮) → **Custom Repositories**
+2. URL: `https://github.com/mvdberge/stiga_lawn_mower_hacs`  
+   Category: **Integration**
+3. Search for **STIGA Lawn Mower** and install
+4. Restart Home Assistant
 
-### Manuell
+### Manual
 
-1. Den Ordner `custom_components/stiga_mower/` in dein  
-   `<config>/custom_components/` Verzeichnis kopieren
-2. Home Assistant neu starten
-
----
-
-## Einrichtung
-
-1. **Einstellungen** → **Geräte & Dienste** → **Integration hinzufügen**
-2. **STIGA Mäh-Roboter** suchen
-3. E-Mail und Passwort der **STIGA.GO App** eingeben
-4. Fertig – alle verknüpften Roboter werden automatisch erkannt
+1. Copy the `custom_components/stiga_lawn_mower_hacs/` folder into your  
+   `<config>/custom_components/` directory
+2. Restart Home Assistant
 
 ---
 
-## Automatisierungsbeispiele
+## Setup
+
+1. **Settings** → **Devices & Services** → **Add Integration**
+2. Search for **STIGA Lawn Mower**
+3. Enter the e-mail and password of your **STIGA.GO app** account
+4. Done – all linked robots will be detected automatically
+
+---
+
+## Automation Examples
 
 ```yaml
-# Mähen starten um 9:00 Uhr (nur werktags, wenn Akku > 50%)
+# Start mowing at 9:00 AM (weekdays only, when battery > 50%)
 automation:
-  - alias: "Bumblebee morgens starten"
+  - alias: "mower start in the morning"
     trigger:
       - platform: time
         at: "09:00:00"
@@ -89,16 +89,16 @@ automation:
       - condition: time
         weekday: [mon, tue, wed, thu, fri]
       - condition: numeric_state
-        entity_id: sensor.bumblebee_akkustand
+        entity_id: sensor.mower_battery_level
         above: 50
     action:
       - service: lawn_mower.start_mowing
         target:
-          entity_id: lawn_mower.bumblebee
+          entity_id: lawn_mower.mower
 
-# Roboter bei Regen zur Station schicken
+# Send robot to dock when it rains
 automation:
-  - alias: "Bumblebee bei Regen einparken"
+  - alias: "mower dock on rain"
     trigger:
       - platform: state
         entity_id: weather.home
@@ -106,31 +106,25 @@ automation:
     action:
       - service: lawn_mower.dock
         target:
-          entity_id: lawn_mower.bumblebee
+          entity_id: lawn_mower.mower
 ```
 
 ---
 
-## Technische Details
+## Technical Details
 
-- **API-Host**: `connectivity-production.stiga.com`
-- **Authentifizierung**: Firebase Bearer Token (identisch zur STIGA.GO App)
-- **Polling-Intervall**: 30 Sekunden
-- **Plattformen**: `lawn_mower`, `sensor`
-- **Mindest-HA-Version**: 2023.9.0 (lawn_mower Entity eingeführt)
-
----
-
-## Bekannte Einschränkungen
-
-- Die öffentliche API dokumentiert keinen dedizierten **Pause-Befehl**;  
-  `pause` sendet daher `endsession` (Rückkehr zur Station).
-- Zonensteuerung (Zone 1–10 gezielt mähen) ist über den  
-  Standard-`lawn_mower.start_mowing` Service nicht direkt möglich –  
-  verwende dafür den Skript-Ansatz mit dem Python-Tool.
+- **API host**: `connectivity-production.stiga.com`
+- **Authentication**: Firebase Bearer Token (identical to the STIGA.GO app)
+- **Polling interval**: 30 seconds
+- **Platforms**: `lawn_mower`, `sensor`
+- **Minimum HA version**: 2023.9.0 (lawn_mower entity introduced)
 
 ---
 
-## Lizenz
+## Known Limitations
 
-MIT
+- The public API does not document a dedicated **pause command**;  
+  `pause` therefore sends `endsession` (return to dock).
+- Zone control (mowing specific zones 1–10) is not directly possible via  
+  the standard `lawn_mower.start_mowing` service –  
+  use the script approach with the Python tool for that.

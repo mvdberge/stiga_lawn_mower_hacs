@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.2.1] - 2026-04-21
+## [1.2.0] - 2026-04-21
 ### Fixed
 - Mower state now correctly uses `currentAction` (what the robot is doing) instead of `mowingMode` (how the session was started), fixing incorrect "docked" state during scheduled mowing sessions
 - `BORDER_CUTTING` and other `currentAction` values are now correctly mapped to `mowing`

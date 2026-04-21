@@ -51,6 +51,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
+        suggested_display_precision=2,
     ),
     StigaSensorDescription(
         key="battery_power_w",
@@ -110,6 +111,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         entity_registry_enabled_default=True,
+        suggested_display_precision=0,
     ),
 )
 

@@ -154,8 +154,8 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             return None
         activity = MOWING_MODE_TO_ACTIVITY.get(mode)
         if activity is None:
-            _LOGGER.debug("Unbekannter mowingMode: %r – als DOCKED behandelt", mode)
-            return LawnMowerActivity.DOCKED
+            _LOGGER.warning("Unbekannter mowingMode: %r – bitte als GitHub Issue melden", mode)
+            return None
         return activity
 
     @property

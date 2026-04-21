@@ -172,8 +172,8 @@ class StigaAPI:
     @staticmethod
     def _build_status(s: dict, b: dict) -> dict:
         """Flaches Status-Dict aus API-Rohdaten aufbauen."""
-        mm      = s.get("mowingMode")
         ca      = s.get("currentAction")
+        mm      = s.get("mowingMode") or ca
         pct     = b.get("percentage")
         voltage = b.get("voltage")
         cap     = b.get("capacity")

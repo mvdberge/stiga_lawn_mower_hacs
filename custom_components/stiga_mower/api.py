@@ -144,6 +144,7 @@ class StigaAPI:
             try:
                 return json.loads(val)
             except json.JSONDecodeError:
+                _LOGGER.warning("Failed to parse JSON field: %.120r", val)
                 return {}
         return val or {}
 

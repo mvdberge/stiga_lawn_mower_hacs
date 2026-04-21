@@ -36,35 +36,45 @@ from .coordinator import StigaDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# State mapping: STIGA mode → LawnMowerActivity
-# Actual API values: strings for vista_robot, integers for older models
-MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
-    # String codes (vista_robot / newer models)
-    "WORKING":      LawnMowerActivity.MOWING,
-    "BORDER":       LawnMowerActivity.MOWING,
-    "MANUAL":       LawnMowerActivity.MOWING,
-    "GOING_HOME":   LawnMowerActivity.PAUSED,   # no RETURNING in HA, closest matching state
-    "PAUSE":        LawnMowerActivity.PAUSED,
-    "IDLE":         LawnMowerActivity.DOCKED,
-    "CHARGING":     LawnMowerActivity.DOCKED,
-    "SCHEDULED":    LawnMowerActivity.DOCKED,
-    "SLEEPING":     LawnMowerActivity.DOCKED,
-    "UPDATING":     LawnMowerActivity.DOCKED,
-    "ERROR":        LawnMowerActivity.ERROR,
-    "LOCKED":       LawnMowerActivity.ERROR,
-    # Integer codes (older autonomous_robot models)
-    1:  LawnMowerActivity.MOWING,
-    7:  LawnMowerActivity.MOWING,
-    2:  LawnMowerActivity.PAUSED,
-    3:  LawnMowerActivity.PAUSED,
-    4:  LawnMowerActivity.ERROR,
-    6:  LawnMowerActivity.ERROR,
-    5:  LawnMowerActivity.DOCKED,
-    8:  LawnMowerActivity.DOCKED,
-    0:  LawnMowerActivity.DOCKED,
+# currentAction describes what the robot is doing RIGHT NOW and takes priority.
+# Maps each value to (LawnMowerActivity, human-readable label).
+_CURRENT_ACTION: dict[str, tuple[LawnMowerActivity, str]] = {
+    "MOWING":          (LawnMowerActivity.MOWING,  "Mowing"),
+    "BORDER_CUTTING":  (LawnMowerActivity.MOWING,  "Border mowing"),
+    "BORDER":          (LawnMowerActivity.MOWING,  "Border mowing"),
+    "WORKING":         (LawnMowerActivity.MOWING,  "Mowing"),
+    "GOING_HOME":      (LawnMowerActivity.PAUSED,  "Returning to dock"),
+    "PAUSE":           (LawnMowerActivity.PAUSED,  "Paused"),
+    "CHARGING":        (LawnMowerActivity.DOCKED,  "Charging"),
+    "WAITING":         (LawnMowerActivity.DOCKED,  "Waiting"),
+    "STOPPED":         (LawnMowerActivity.DOCKED,  "Stopped"),
+    "NONE":            (LawnMowerActivity.DOCKED,  "Idle"),
+    "ERROR":           (LawnMowerActivity.ERROR,   "Error"),
 }
 
-# Human-readable status label (used as attribute)
+# mowingMode describes HOW the session was started (fallback when currentAction is absent).
+# Actual API values: strings for vista_robot, integers for older models.
+MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
+    "WORKING":    LawnMowerActivity.MOWING,
+    "BORDER":     LawnMowerActivity.MOWING,
+    "MANUAL":     LawnMowerActivity.MOWING,
+    "GOING_HOME": LawnMowerActivity.PAUSED,  # no RETURNING in HA, closest matching state
+    "PAUSE":      LawnMowerActivity.PAUSED,
+    "IDLE":       LawnMowerActivity.DOCKED,
+    "CHARGING":   LawnMowerActivity.DOCKED,
+    "SCHEDULED":  LawnMowerActivity.DOCKED,
+    "SLEEPING":   LawnMowerActivity.DOCKED,
+    "UPDATING":   LawnMowerActivity.DOCKED,
+    "ERROR":      LawnMowerActivity.ERROR,
+    "LOCKED":     LawnMowerActivity.ERROR,
+    # Integer codes (older autonomous_robot models)
+    1: LawnMowerActivity.MOWING,   7: LawnMowerActivity.MOWING,
+    2: LawnMowerActivity.PAUSED,   3: LawnMowerActivity.PAUSED,
+    4: LawnMowerActivity.ERROR,    6: LawnMowerActivity.ERROR,
+    5: LawnMowerActivity.DOCKED,   8: LawnMowerActivity.DOCKED,
+    0: LawnMowerActivity.DOCKED,
+}
+
 MOWING_MODE_LABELS: dict[Any, str] = {
     "WORKING":    "Mowing",
     "BORDER":     "Border mowing",
@@ -78,10 +88,10 @@ MOWING_MODE_LABELS: dict[Any, str] = {
     "UPDATING":   "Updating",
     "ERROR":      "Error",
     "LOCKED":     "Locked",
-    1: "Mowing",              2: "Returning",
-    3: "Paused",              4: "Error",
-    5: "Sleeping/Charging",   6: "Locked",
-    7: "Border mowing",       8: "Scheduled",
+    1: "Mowing",             2: "Returning",
+    3: "Paused",             4: "Error",
+    5: "Sleeping/Charging",  6: "Locked",
+    7: "Border mowing",      8: "Scheduled",
     0: "Unknown",
 }
 
@@ -119,7 +129,6 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         device: dict,
     ) -> None:
         super().__init__(coordinator)
-        self._device   = device
         self._uuid     = _dev_uuid(device)
         attrs          = device.get("attributes") or {}
         self._dev_name = attrs.get("name") or self._uuid
@@ -149,12 +158,27 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
     @property
     def activity(self) -> LawnMowerActivity | None:
-        mode = self._status.get("mowing_mode")
+        s = self._status
+
+        # currentAction reflects what the robot is doing right now – use it first.
+        action = s.get("current_action")
+        if isinstance(action, str):
+            entry = _CURRENT_ACTION.get(action.upper())
+            if entry is not None:
+                return entry[0]
+
+        # Fall back to mowingMode (describes how the session was started).
+        mode = s.get("mowing_mode")
         if mode is None:
             return None
         activity = MOWING_MODE_TO_ACTIVITY.get(mode)
+        if activity is None and isinstance(mode, str):
+            activity = MOWING_MODE_TO_ACTIVITY.get(mode.upper())
         if activity is None:
-            _LOGGER.warning("Unknown mowingMode: %r – please report as a GitHub issue", mode)
+            _LOGGER.warning(
+                "Unknown mowingMode %r / currentAction %r – please report as a GitHub issue",
+                mode, action,
+            )
             return None
         return activity
 
@@ -168,12 +192,19 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     def extra_state_attributes(self) -> dict[str, Any]:
         s = self._status
         mode = s.get("mowing_mode")
+        action = s.get("current_action")
+        entry = _CURRENT_ACTION.get(action.upper()) if isinstance(action, str) else None
+        label = (
+            entry[1] if entry is not None
+            else MOWING_MODE_LABELS.get(mode, str(mode) if mode else "—")
+        )
         attrs: dict[str, Any] = {
-            ATTR_MOWING_MODE_RAW:   mode,
-            "mowing_mode_label":    MOWING_MODE_LABELS.get(mode, str(mode) if mode else "—"),
-            ATTR_SERIAL_NUMBER:     self._serial,
-            ATTR_PRODUCT_CODE:      self._product,
-            ATTR_DEVICE_TYPE:       self._dev_type,
+            ATTR_MOWING_MODE_RAW:    mode,
+            "current_action_raw":    action,
+            "mowing_mode_label":     label,
+            ATTR_SERIAL_NUMBER:      self._serial,
+            ATTR_PRODUCT_CODE:       self._product,
+            ATTR_DEVICE_TYPE:        self._dev_type,
         }
 
         # Battery details
@@ -215,11 +246,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
     async def async_dock(self) -> None:
         """Send the robot to the charging dock."""
-        try:
-            await self.coordinator.api.stop_mowing(self._uuid)
-            await self.coordinator.async_request_refresh()
-        except Exception as err:
-            _LOGGER.error("Error docking: %s", err)
+        await self._stop_session("docking")
 
     async def async_pause(self) -> None:
         """
@@ -227,11 +254,14 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         STIGA has no dedicated pause command in the public API –
         endsession sends the robot to the dock (closest sensible action).
         """
+        await self._stop_session("pausing")
+
+    async def _stop_session(self, context: str) -> None:
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            _LOGGER.error("Error pausing: %s", err)
+            _LOGGER.error("Error during %s: %s", context, err)
 
 
 def _dev_uuid(device: dict) -> str:

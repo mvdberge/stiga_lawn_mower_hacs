@@ -180,7 +180,7 @@ class StigaAPI:
     def _build_status(s: dict, b: dict) -> dict:
         """Build a flat status dict from raw API data."""
         ca      = s.get("currentAction")
-        mm      = s.get("mowingMode") or ca
+        mm      = s.get("mowingMode")
         pct     = b.get("percentage")
         voltage = b.get("voltage")
         cap     = b.get("capacity")

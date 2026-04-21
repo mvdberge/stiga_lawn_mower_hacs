@@ -5,7 +5,8 @@ DOMAIN = "stiga_mower"
 CONF_EMAIL    = "email"
 CONF_PASSWORD = "password"
 
-UPDATE_INTERVAL = 30  # seconds
+UPDATE_INTERVAL  = 30  # seconds
+REQUEST_TIMEOUT  = 10  # seconds per HTTP request
 
 # Firebase Auth (publicly embedded in STIGA app code)
 FIREBASE_API_KEY  = "AIzaSyCPtRBU_hwWZYsguHp9ucGrfNac0kXR6ug"

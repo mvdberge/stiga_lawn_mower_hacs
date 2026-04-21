@@ -1,4 +1,10 @@
 {
+  "issues": {
+    "connection_error": {
+      "title": "STIGA cloud connection failed",
+      "description": "Home Assistant has been unable to reach the STIGA cloud for {failures} consecutive update cycles.\n\nLast error: {error}\n\nPlease check your internet connection and verify that the STIGA service is available. This notice will disappear automatically once the connection is restored."
+    }
+  },
   "config": {
     "step": {
       "user": {

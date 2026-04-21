@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.1.0] - 2026-04-21
+### Added
+- Persistent repair issue in Settings → Repairs after 3 consecutive cloud connection failures (auto-resolves on reconnect)
+
+### Fixed
+- API requests now have a 10-second timeout, preventing a slow or unresponsive STIGA server from blocking the update cycle
+
+---
+
 ## [1.0.2] - 2026-04-21
 ### Added
 - Plugin icon (STIGA logo)

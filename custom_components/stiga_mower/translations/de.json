@@ -1,4 +1,10 @@
 {
+  "issues": {
+    "connection_error": {
+      "title": "Verbindung zur STIGA Cloud fehlgeschlagen",
+      "description": "Home Assistant konnte die STIGA Cloud in {failures} aufeinanderfolgenden Update-Zyklen nicht erreichen.\n\nLetzter Fehler: {error}\n\nBitte überprüfe deine Internetverbindung und stelle sicher, dass der STIGA-Dienst erreichbar ist. Diese Meldung verschwindet automatisch, sobald die Verbindung wiederhergestellt ist."
+    }
+  },
   "config": {
     "step": {
       "user": {

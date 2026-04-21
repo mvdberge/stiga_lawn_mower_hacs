@@ -6,12 +6,17 @@ import logging
 from datetime import timedelta
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import StigaAPI, StigaApiError
 from .const import DOMAIN, UPDATE_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
+
+_ISSUE_CONNECTION = "connection_error"
+# Number of consecutive failures before a persistent HA repair issue is created.
+MAX_CONSECUTIVE_FAILURES = 3
 
 
 class StigaDataUpdateCoordinator(DataUpdateCoordinator):
@@ -36,6 +41,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
 
     def __init__(self, hass: HomeAssistant, api: StigaAPI) -> None:
         self.api = api
+        self._consecutive_failures = 0
         super().__init__(
             hass,
             _LOGGER,
@@ -59,9 +65,34 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning("Could not fetch status for %s: %s", uuid, err)
                     statuses[uuid] = {}
 
+            # Successful update – clear any outstanding repair issue.
+            if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
+                ir.async_delete_issue(self.hass, DOMAIN, _ISSUE_CONNECTION)
+                _LOGGER.info("STIGA cloud connection restored after %d failures.", self._consecutive_failures)
+            self._consecutive_failures = 0
+
             return {"devices": devices, "statuses": statuses}
 
         except StigaApiError as err:
+            self._consecutive_failures += 1
+            _LOGGER.warning(
+                "STIGA API update failed (attempt %d): %s",
+                self._consecutive_failures,
+                err,
+            )
+            if self._consecutive_failures == MAX_CONSECUTIVE_FAILURES:
+                ir.async_create_issue(
+                    self.hass,
+                    DOMAIN,
+                    _ISSUE_CONNECTION,
+                    is_fixable=False,
+                    severity=ir.IssueSeverity.ERROR,
+                    translation_key=_ISSUE_CONNECTION,
+                    translation_placeholders={
+                        "failures": str(self._consecutive_failures),
+                        "error": str(err),
+                    },
+                )
             raise UpdateFailed(f"STIGA API error: {err}") from err
 
 

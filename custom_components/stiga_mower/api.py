@@ -15,6 +15,7 @@ from .const import (
     EP_STATUS,
     EP_START,
     EP_STOP,
+    REQUEST_TIMEOUT,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,6 +47,7 @@ class StigaAPI:
 
     async def authenticate(self) -> None:
         """Firebase login – stores idToken internally."""
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         try:
             async with self._session.post(
                 FIREBASE_AUTH_URL,
@@ -55,6 +57,7 @@ class StigaAPI:
                     "returnSecureToken": True,
                 },
                 params={"key": FIREBASE_API_KEY},
+                timeout=timeout,
             ) as resp:
                 data = await resp.json()
                 if resp.status != 200:
@@ -71,10 +74,12 @@ class StigaAPI:
     async def _get(self, path: str, retry: bool = True):
         if not self._token:
             await self.authenticate()
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         try:
             async with self._session.get(
                 f"{STIGA_BASE_URL}{path}",
                 headers=self._auth_header(),
+                timeout=timeout,
             ) as resp:
                 if resp.status == 401 and retry:
                     _LOGGER.debug("Token expired – re-authenticating.")
@@ -89,11 +94,13 @@ class StigaAPI:
     async def _post(self, path: str, body=None, retry: bool = True):
         if not self._token:
             await self.authenticate()
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
         try:
             async with self._session.post(
                 f"{STIGA_BASE_URL}{path}",
                 headers=self._auth_header(),
                 json=body,
+                timeout=timeout,
             ) as resp:
                 if resp.status == 401 and retry:
                     await self.authenticate()

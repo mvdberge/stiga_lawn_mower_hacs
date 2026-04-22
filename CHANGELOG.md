@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.4.1] - 2026-04-22
+### Added
+- `error_description` state attribute on the lawn mower entity — the numeric `errorCode` is mapped to a human-readable key (e.g. `low_battery`, `lift_sensor`, `out_of_perimeter`) using the info-code table from [matthewgream/stiga-api](https://github.com/matthewgream/stiga-api)
+- Coverage for additional `currentAction` states reported by Vista robots: `WAITING_FOR_COMMAND`, `CUTTING_BORDER`, `PLANNING_ONGOING`, `REACHING_FIRST_POINT`, `NAVIGATING_TO_AREA`, `UPDATING`, `STORING_DATA`, `CALIBRATION`, `BLADES_CALIBRATING`, `BLOCKED`, `LID_OPEN`, `STARTUP_REQUIRED`
+
+### Fixed
+- Mower state honours the API's `isDocked` flag and new `currentAction` values (`AT_HOME`, `BACK_HOME`, `BACK_HOME_MANUAL`); `mowingMode` values `SCHEDULED` and `IDLE` are no longer hard-wired to *Docked*. When no confirming signal is available, the mower now falls back to *Paused* instead of incorrectly showing *Docked*
+- Corrected mapping of `WAITING` / `STOPPED` to *Paused* (not *Docked*) — these indicate the robot is standing outside the charging station waiting for input
+
+---
+
 ## [1.4.0] - 2026-04-22
 ### Added
 - Reconfigure flow for updating credentials from the UI
@@ -9,7 +20,7 @@
 ### Changed
 - Battery sensors other than level grouped under the *diagnostic* entity category
 - Migrated to `ConfigEntry.runtime_data`
-- Set `PARALLEL_UPDATES = 1` 
+- Set `PARALLEL_UPDATES = 1`
 - Quieter logging on transient API errors
 
 ---

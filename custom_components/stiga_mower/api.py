@@ -134,7 +134,13 @@ class StigaAPI:
     # ------------------------------------------------------------------ Status
 
     async def get_device_status(self, uuid: str) -> dict:
-        """GET /devices/{uuid}/mqttstatus – fetch and parse raw status."""
+        """GET /devices/{uuid}/mqttstatus – fetch and parse raw status.
+
+        NOTE: this endpoint is NOT part of the official STIGA Integration API
+        documentation (which only covers /garage/integration and the
+        startsession/endsession commands). It is used by the STIGA.GO app
+        itself and may change without notice.
+        """
         raw = await self._get(EP_STATUS.format(uuid=uuid))
         return self._parse_status(raw)
 
@@ -202,6 +208,7 @@ class StigaAPI:
         return {
             "mowing_mode":       mm,
             "current_action":    ca,
+            "is_docked":         s.get("isDocked"),
             "error_code":        s.get("errorCode"),
             # Batterie
             "battery_level":     pct,
@@ -217,7 +224,7 @@ class StigaAPI:
             # Additional raw fields
             "extra": {
                 k: v for k, v in s.items()
-                if k not in ("mowingMode", "currentAction", "errorCode")
+                if k not in ("mowingMode", "currentAction", "errorCode", "isDocked")
             },
         }
 

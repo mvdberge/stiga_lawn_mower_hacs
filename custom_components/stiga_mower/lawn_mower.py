@@ -24,6 +24,8 @@ from .const import (
     ATTR_DEVICE_TYPE,
     ATTR_MOWING_MODE_RAW,
     ATTR_ERROR_CODE,
+    ATTR_ERROR_DESCRIPTION,
+    ERROR_INFO_CODES,
 )
 from .coordinator import StigaDataUpdateCoordinator
 
@@ -33,31 +35,57 @@ PARALLEL_UPDATES = 1
 
 # currentAction describes what the robot is doing RIGHT NOW and takes priority.
 # Maps each value to (LawnMowerActivity, human-readable label).
+#
+# Reference for the state semantics (names/codes reverse engineered from the
+# protobuf MQTT payload): https://github.com/matthewgream/stiga-api
 _CURRENT_ACTION: dict[str, tuple[LawnMowerActivity, str]] = {
-    "MOWING":          (LawnMowerActivity.MOWING,  "Mowing"),
-    "BORDER_CUTTING":  (LawnMowerActivity.MOWING,  "Border mowing"),
-    "BORDER":          (LawnMowerActivity.MOWING,  "Border mowing"),
-    "WORKING":         (LawnMowerActivity.MOWING,  "Mowing"),
-    "GOING_HOME":      (LawnMowerActivity.PAUSED,  "Returning to dock"),
-    "PAUSE":           (LawnMowerActivity.PAUSED,  "Paused"),
-    "CHARGING":        (LawnMowerActivity.DOCKED,  "Charging"),
-    "WAITING":         (LawnMowerActivity.DOCKED,  "Waiting"),
-    "STOPPED":         (LawnMowerActivity.DOCKED,  "Stopped"),
-    "NONE":            (LawnMowerActivity.DOCKED,  "Idle"),
-    "ERROR":           (LawnMowerActivity.ERROR,   "Error"),
+    # Mowing
+    "MOWING":                (LawnMowerActivity.MOWING,  "Mowing"),
+    "WORKING":               (LawnMowerActivity.MOWING,  "Mowing"),
+    "BORDER":                (LawnMowerActivity.MOWING,  "Border mowing"),
+    "BORDER_CUTTING":        (LawnMowerActivity.MOWING,  "Border mowing"),
+    "CUTTING_BORDER":        (LawnMowerActivity.MOWING,  "Border mowing"),
+    "PLANNING_ONGOING":      (LawnMowerActivity.MOWING,  "Planning"),
+    "REACHING_FIRST_POINT":  (LawnMowerActivity.MOWING,  "Heading to start point"),
+    "NAVIGATING_TO_AREA":    (LawnMowerActivity.MOWING,  "Navigating to zone"),
+    # Returning to dock
+    "GOING_HOME":            (LawnMowerActivity.PAUSED,  "Returning to dock"),
+    "BACK_HOME":             (LawnMowerActivity.PAUSED,  "Returning to dock"),
+    "BACK_HOME_MANUAL":      (LawnMowerActivity.PAUSED,  "Returning to dock"),
+    # Docked
+    "AT_HOME":               (LawnMowerActivity.DOCKED,  "At home"),
+    "CHARGING":              (LawnMowerActivity.DOCKED,  "Charging"),
+    "UPDATING":              (LawnMowerActivity.DOCKED,  "Updating firmware"),
+    "STORING_DATA":          (LawnMowerActivity.DOCKED,  "Storing data"),
+    # Paused / idle outside the dock
+    "PAUSE":                 (LawnMowerActivity.PAUSED,  "Paused"),
+    "WAITING":               (LawnMowerActivity.PAUSED,  "Waiting for command"),
+    "WAITING_FOR_COMMAND":   (LawnMowerActivity.PAUSED,  "Waiting for command"),
+    "STOPPED":               (LawnMowerActivity.PAUSED,  "Stopped"),
+    "NONE":                  (LawnMowerActivity.PAUSED,  "Idle"),
+    "CALIBRATION":           (LawnMowerActivity.PAUSED,  "Calibrating"),
+    "BLADES_CALIBRATING":    (LawnMowerActivity.PAUSED,  "Calibrating blades"),
+    # Error
+    "ERROR":                 (LawnMowerActivity.ERROR,   "Error"),
+    "BLOCKED":               (LawnMowerActivity.ERROR,   "Blocked"),
+    "LID_OPEN":              (LawnMowerActivity.ERROR,   "Lid open"),
+    "STARTUP_REQUIRED":      (LawnMowerActivity.ERROR,   "Startup required"),
 }
 
 # mowingMode describes HOW the session was started (fallback when currentAction is absent).
 # Actual API values: strings for vista_robot, integers for older models.
+#
+# Note: SCHEDULED and IDLE are intentionally missing – they only say "a schedule
+# is configured" / "no active session" and can mean either "waiting in dock" or
+# "stopped outside". Without a stronger signal (isDocked or currentAction) we
+# can't tell, so the activity falls through to None (unknown).
 MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
     "WORKING":    LawnMowerActivity.MOWING,
     "BORDER":     LawnMowerActivity.MOWING,
     "MANUAL":     LawnMowerActivity.MOWING,
     "GOING_HOME": LawnMowerActivity.PAUSED,  # no RETURNING in HA, closest matching state
     "PAUSE":      LawnMowerActivity.PAUSED,
-    "IDLE":       LawnMowerActivity.DOCKED,
     "CHARGING":   LawnMowerActivity.DOCKED,
-    "SCHEDULED":  LawnMowerActivity.DOCKED,
     "SLEEPING":   LawnMowerActivity.DOCKED,
     "UPDATING":   LawnMowerActivity.DOCKED,
     "ERROR":      LawnMowerActivity.ERROR,
@@ -69,6 +97,10 @@ MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
     5: LawnMowerActivity.DOCKED,   8: LawnMowerActivity.DOCKED,
     0: LawnMowerActivity.DOCKED,
 }
+
+# Modes that are known but ambiguous without a stronger signal – suppress the
+# "unknown mode" warning for these.
+_AMBIGUOUS_MODES: frozenset = frozenset({"SCHEDULED", "IDLE"})
 
 MOWING_MODE_LABELS: dict[Any, str] = {
     "WORKING":    "Mowing",
@@ -167,8 +199,15 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     @property
     def activity(self) -> LawnMowerActivity | None:
         s = self._status
+        if not s:
+            return None
 
-        # currentAction reflects what the robot is doing right now – use it first.
+        # Strongest signal: STIGA sends isDocked: true when the robot is parked
+        # in its charging station. Overrides all other state fields.
+        if s.get("is_docked") is True:
+            return LawnMowerActivity.DOCKED
+
+        # currentAction reflects what the robot is doing right now.
         action = s.get("current_action")
         if isinstance(action, str):
             entry = _CURRENT_ACTION.get(action.upper())
@@ -177,18 +216,23 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
         # Fall back to mowingMode (describes how the session was started).
         mode = s.get("mowing_mode")
-        if mode is None:
-            return None
-        activity = MOWING_MODE_TO_ACTIVITY.get(mode)
-        if activity is None and isinstance(mode, str):
-            activity = MOWING_MODE_TO_ACTIVITY.get(mode.upper())
-        if activity is None:
-            _LOGGER.warning(
-                "Unknown mowingMode %r / currentAction %r – please report as a GitHub issue",
-                mode, action,
-            )
-            return None
-        return activity
+        if mode is not None:
+            activity = MOWING_MODE_TO_ACTIVITY.get(mode)
+            if activity is None and isinstance(mode, str):
+                activity = MOWING_MODE_TO_ACTIVITY.get(mode.upper())
+            if activity is not None:
+                return activity
+            mode_key = mode.upper() if isinstance(mode, str) else mode
+            if mode_key not in _AMBIGUOUS_MODES:
+                _LOGGER.warning(
+                    "Unknown mowingMode %r / currentAction %r – please report as a GitHub issue",
+                    mode, action,
+                )
+
+        # No currentAction, no confirming isDocked, and mowingMode is either
+        # missing or ambiguous (e.g. SCHEDULED while stopped outside). Report
+        # the mower as paused rather than leaving the state unknown.
+        return LawnMowerActivity.PAUSED
 
     @property
     def battery_level(self) -> int | None:
@@ -217,6 +261,8 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
         if (ec := s.get("error_code")) is not None:
             attrs[ATTR_ERROR_CODE] = ec
+            if (desc := _lookup_error_description(ec)) is not None:
+                attrs[ATTR_ERROR_DESCRIPTION] = desc
 
         if s.get("battery_charging"):
             attrs["battery_charging"] = True
@@ -259,3 +305,15 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
 def _dev_uuid(device: dict) -> str:
     return (device.get("attributes") or {}).get("uuid", "")
+
+
+def _lookup_error_description(code: Any) -> str | None:
+    """Translate a numeric error/info code into a human-readable key."""
+    if isinstance(code, int):
+        return ERROR_INFO_CODES.get(code)
+    if isinstance(code, str):
+        try:
+            return ERROR_INFO_CODES.get(int(code, 0))
+        except ValueError:
+            return None
+    return None

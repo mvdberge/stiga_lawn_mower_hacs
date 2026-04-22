@@ -10,13 +10,13 @@ from homeassistant.components.lawn_mower import (
     LawnMowerEntity,
     LawnMowerEntityFeature,
 )
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import StigaConfigEntry
 from .const import (
     DOMAIN,
     ATTR_SERIAL_NUMBER,
@@ -28,6 +28,8 @@ from .const import (
 from .coordinator import StigaDataUpdateCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+PARALLEL_UPDATES = 1
 
 # currentAction describes what the robot is doing RIGHT NOW and takes priority.
 # Maps each value to (LawnMowerActivity, human-readable label).
@@ -91,18 +93,27 @@ MOWING_MODE_LABELS: dict[Any, str] = {
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: StigaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up LawnMower entities for all STIGA robots."""
-    coordinator: StigaDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
+    known: set[str] = set()
 
-    entities = [
-        StigaLawnMower(coordinator, device)
-        for device in coordinator.data.get("devices", [])
-        if _dev_uuid(device)
-    ]
-    async_add_entities(entities)
+    @callback
+    def _add_new_entities() -> None:
+        new_entities: list[StigaLawnMower] = []
+        for device in coordinator.data.get("devices", []):
+            uuid = _dev_uuid(device)
+            if not uuid or uuid in known:
+                continue
+            known.add(uuid)
+            new_entities.append(StigaLawnMower(coordinator, device))
+        if new_entities:
+            async_add_entities(new_entities)
+
+    entry.async_on_unload(coordinator.async_add_listener(_add_new_entities))
+    _add_new_entities()
 
 
 class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEntity):
@@ -148,6 +159,10 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     @property
     def _status(self) -> dict:
         return self.coordinator.data.get("statuses", {}).get(self._uuid, {})
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._uuid in self.coordinator.data.get("statuses", {})
 
     @property
     def activity(self) -> LawnMowerActivity | None:

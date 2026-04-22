@@ -20,15 +20,12 @@ _LOGGER = logging.getLogger(__name__)
 _ISSUE_CONNECTION = "connection_error"
 MAX_CONSECUTIVE_FAILURES = 3
 
-# Hard cap on each full update cycle; must be less than UPDATE_INTERVAL.
-# Prevents a slow/hanging API from blocking the event loop indefinitely.
 _UPDATE_TIMEOUT = UPDATE_INTERVAL - 5
 
 
-class StigaDataUpdateCoordinator(DataUpdateCoordinator):
+class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
     """
     Central coordinator for all STIGA devices.
-    Fetches all devices and their statuses in a single pass.
 
     data structure after update:
     {
@@ -58,22 +55,26 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
         )
 
     async def _async_setup(self) -> None:
-        """Fetch the device list once at startup – devices rarely change.
-
-        Called automatically by async_config_entry_first_refresh().
-        Separating this from _async_update_data means every 30-second poll
-        only fetches status endpoints, not the full device list.
-        """
+        """Fetch the initial device list."""
         self._devices = await self.api.get_devices()
         if not self._devices:
             raise UpdateFailed("No STIGA devices found for this account.")
 
     async def _async_update_data(self) -> dict:
-        """Fetch current status for all known devices."""
+        """Refresh devices and status for all known devices."""
         try:
             async with asyncio.timeout(_UPDATE_TIMEOUT):
-                statuses: dict[str, dict] = {}
+                # Refresh device list so newly added/removed robots are picked up
+                # without requiring a Home Assistant restart.
+                try:
+                    devices = await self.api.get_devices()
+                except StigaApiError as err:
+                    _LOGGER.debug("Device list refresh failed, using cached: %s", err)
+                else:
+                    if devices:
+                        self._devices = devices
 
+                statuses: dict[str, dict] = {}
                 previous = (self.data or {}).get("statuses", {})
                 for device in self._devices:
                     uuid = _device_uuid(device)
@@ -82,12 +83,9 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
                     try:
                         statuses[uuid] = await self.api.get_device_status(uuid)
                     except StigaApiError as err:
-                        _LOGGER.warning("Could not fetch status for %s: %s", uuid, err)
-                        # Keep last known data so sensors don't drop to unavailable
-                        # on a transient error.
+                        _LOGGER.debug("Status fetch for %s failed: %s", uuid, err)
                         statuses[uuid] = previous.get(uuid, {})
 
-            # Successful update – clear any outstanding repair issue.
             if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 ir.async_delete_issue(self.hass, DOMAIN, _ISSUE_CONNECTION)
                 _LOGGER.info(
@@ -99,16 +97,10 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator):
             return {"devices": self._devices, "statuses": statuses}
 
         except StigaAuthError as err:
-            # Invalid credentials – stop retrying and prompt the user to re-authenticate.
             raise ConfigEntryAuthFailed from err
 
         except StigaApiError as err:
             self._consecutive_failures += 1
-            _LOGGER.warning(
-                "STIGA API update failed (attempt %d): %s",
-                self._consecutive_failures,
-                err,
-            )
             if self._consecutive_failures == MAX_CONSECUTIVE_FAILURES:
                 ir.async_create_issue(
                     self.hass,

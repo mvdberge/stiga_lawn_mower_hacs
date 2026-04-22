@@ -11,21 +11,24 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     PERCENTAGE,
+    EntityCategory,
+    UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfPower,
     UnitOfTime,
-    UnitOfElectricCurrent,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from . import StigaConfigEntry
 from .const import DOMAIN
 from .coordinator import StigaDataUpdateCoordinator
+
+PARALLEL_UPDATES = 1
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -35,7 +38,7 @@ class StigaSensorDescription(SensorEntityDescription):
 
 
 SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
-    # Sensors with a standard device_class get their name from HA's built-in translations.
+    # Primary user-facing sensor – no category, enabled by default.
     StigaSensorDescription(
         key="battery_level",
         status_key="battery_level",
@@ -43,14 +46,14 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
     ),
+    # Diagnostic sensors useful enough to stay enabled by default.
     StigaSensorDescription(
-        key="battery_voltage",
-        status_key="battery_voltage",
-        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
-        device_class=SensorDeviceClass.VOLTAGE,
+        key="battery_time_left",
+        status_key="battery_time_left",
+        native_unit_of_measurement=UnitOfTime.MINUTES,
+        device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=True,
-        suggested_display_precision=2,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     StigaSensorDescription(
         key="battery_power_w",
@@ -58,32 +61,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=True,
-    ),
-    StigaSensorDescription(
-        key="battery_current",
-        status_key="battery_current",
-        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
-        device_class=SensorDeviceClass.CURRENT,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
-    ),
-    StigaSensorDescription(
-        key="battery_time_left",
-        status_key="battery_time_left",
-        native_unit_of_measurement=UnitOfTime.MINUTES,
-        device_class=SensorDeviceClass.DURATION,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=True,
-    ),
-    # Sensors without a device_class use translation_key for localised names.
-    StigaSensorDescription(
-        key="battery_cycles",
-        status_key="battery_cycles",
-        translation_key="battery_cycles",
-        native_unit_of_measurement="cycles",
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        entity_registry_enabled_default=True,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     StigaSensorDescription(
         key="battery_health",
@@ -91,7 +69,33 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         translation_key="battery_health",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=True,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # Low-level diagnostics – disabled by default to reduce entity noise.
+    StigaSensorDescription(
+        key="battery_voltage",
+        status_key="battery_voltage",
+        native_unit_of_measurement=UnitOfElectricPotential.VOLT,
+        device_class=SensorDeviceClass.VOLTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=2,
+    ),
+    StigaSensorDescription(
+        key="battery_current",
+        status_key="battery_current",
+        native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
+        device_class=SensorDeviceClass.CURRENT,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    StigaSensorDescription(
+        key="battery_cycles",
+        status_key="battery_cycles",
+        translation_key="battery_cycles",
+        native_unit_of_measurement="cycles",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     StigaSensorDescription(
         key="battery_capacity",
@@ -99,7 +103,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         translation_key="battery_capacity",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     StigaSensorDescription(
         key="battery_remaining",
@@ -107,7 +111,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         translation_key="battery_remaining",
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=True,
+        entity_category=EntityCategory.DIAGNOSTIC,
         suggested_display_precision=0,
     ),
 )
@@ -115,21 +119,28 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: StigaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor entities for all STIGA robots."""
-    coordinator: StigaDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
+    known: set[str] = set()
 
-    entities: list[StigaSensor] = []
-    for device in coordinator.data.get("devices", []):
-        uuid = _dev_uuid(device)
-        if not uuid:
-            continue
-        for description in SENSOR_DESCRIPTIONS:
-            entities.append(StigaSensor(coordinator, device, description))
+    @callback
+    def _add_new_entities() -> None:
+        new_entities: list[StigaSensor] = []
+        for device in coordinator.data.get("devices", []):
+            uuid = _dev_uuid(device)
+            if not uuid or uuid in known:
+                continue
+            known.add(uuid)
+            for description in SENSOR_DESCRIPTIONS:
+                new_entities.append(StigaSensor(coordinator, device, description))
+        if new_entities:
+            async_add_entities(new_entities)
 
-    async_add_entities(entities)
+    entry.async_on_unload(coordinator.async_add_listener(_add_new_entities))
+    _add_new_entities()
 
 
 class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):

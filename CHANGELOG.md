@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0] - 2026-04-22
+### Added
+- Reconfigure flow for updating credentials from the UI
+- Diagnostics download (credentials and identifiers redacted)
+- New STIGA devices picked up automatically without restart
+
+### Changed
+- Battery sensors other than level grouped under the *diagnostic* entity category
+- Migrated to `ConfigEntry.runtime_data`
+- Set `PARALLEL_UPDATES = 1` 
+- Quieter logging on transient API errors
+
+---
+
 ## [1.3.0] - 2026-04-21
 ### Added
 - Reauthentication flow for handling expired credentials

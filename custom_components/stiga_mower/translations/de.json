@@ -28,6 +28,18 @@
         "data_description": {
           "password": "Dein aktuelles STIGA.GO App-Passwort."
         }
+      },
+      "reconfigure": {
+        "title": "STIGA-Zugangsdaten aktualisieren",
+        "description": "Aktualisiere die STIGA.GO Zugangsdaten für diese Integration. Die E-Mail-Adresse muss mit dem aktuell konfigurierten Konto übereinstimmen.",
+        "data": {
+          "email": "E-Mail-Adresse",
+          "password": "Passwort"
+        },
+        "data_description": {
+          "email": "Die E-Mail-Adresse, mit der du dich in der STIGA.GO App anmeldest.",
+          "password": "Dein STIGA.GO App-Passwort."
+        }
       }
     },
     "error": {
@@ -38,7 +50,9 @@
     },
     "abort": {
       "already_configured": "Dieses STIGA-Konto ist bereits eingerichtet.",
-      "reauth_successful": "Erneute Authentifizierung war erfolgreich."
+      "reauth_successful": "Erneute Authentifizierung war erfolgreich.",
+      "reconfigure_successful": "Zugangsdaten erfolgreich aktualisiert.",
+      "account_mismatch": "Die E-Mail-Adresse stimmt nicht mit dem ursprünglich konfigurierten Konto überein. Um ein anderes Konto zu verwenden, entferne diese Integration und richte sie neu ein."
     }
   },
   "entity": {

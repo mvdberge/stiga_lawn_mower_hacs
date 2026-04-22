@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.2] - 2026-04-22
+### Changed
+- Update the brand assets as required by the Home Assistant Brands proxy: `icon.png` (256×256), `icon@2x.png` (512×512), `logo.png` (360×256), `logo@2x.png` (719×512). The previous `icon.png` was 32×32 and displayed pixelated in the integration list.
+
+### Added
+- High-DPI brand assets (`icon@2x.png`, `logo@2x.png`) for retina displays
+
+---
+
 ## [1.4.1] - 2026-04-22
 ### Added
 - `error_description` state attribute on the lawn mower entity — the numeric `errorCode` is mapped to a human-readable key (e.g. `low_battery`, `lift_sensor`, `out_of_perimeter`) using the info-code table from [matthewgream/stiga-api](https://github.com/matthewgream/stiga-api)

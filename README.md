@@ -4,7 +4,7 @@
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2023.9%2B-blue)](https://www.home-assistant.io/)
 
 Direct cloud integration for STIGA robotic lawn mowers (A-Series / Vista models) without any MQTT detour.  
-Communicates directly with the official **STIGA Integration REST API**.
+Communicates directly with the official [**STIGA Integration REST API**](https://www.stiga.com/int/stiga-integration-api).
 
 ---
 

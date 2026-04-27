@@ -1,0 +1,12 @@
+stiga_mower_status.py
+login.secret
+*.secret
+
+# Internal endpoint reference (contains undocumented API details and example
+# responses with personal UUIDs/MAC addresses) — do not publish.
+API_INTERNAL.md
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo

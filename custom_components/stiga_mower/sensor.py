@@ -16,10 +16,12 @@ from homeassistant.const import (
     EntityCategory,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
+    UnitOfLength,
     UnitOfPower,
     UnitOfTime,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -114,6 +116,23 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         suggested_display_precision=0,
     ),
+    # Cutting height as configured in the STIGA.GO app. Read-only — writing
+    # would require MQTT, which this integration does not implement.
+    StigaSensorDescription(
+        key="cutting_height",
+        status_key="cutting_height_mm",
+        translation_key="cutting_height",
+        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    StigaSensorDescription(
+        key="total_work_time",
+        status_key="total_work_time",
+        translation_key="total_work_time",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 
@@ -157,27 +176,39 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        attrs = device.get("attributes") or {}
-        self._uuid    = _dev_uuid(device)
-        self._serial  = attrs.get("serial_number", "")
-        self._product = attrs.get("product_code", "")
-        self._dev_name = attrs.get("name") or self._uuid
-
+        self._uuid = _dev_uuid(device)
         self._attr_unique_id = f"stiga_{self._uuid}_{description.key}"
+
+    def _device_attrs(self) -> dict:
+        for d in self.coordinator.data.get("devices", []):
+            if _dev_uuid(d) == self._uuid:
+                return d.get("attributes") or {}
+        return {}
 
     @property
     def device_info(self) -> DeviceInfo:
-        return DeviceInfo(
+        a = self._device_attrs()
+        info = DeviceInfo(
             identifiers={(DOMAIN, self._uuid)},
-            name=self._dev_name,
+            name=a.get("name") or self._uuid,
             manufacturer="STIGA",
-            model=self._product,
-            serial_number=self._serial,
+            model=a.get("product_code") or a.get("device_type") or "",
+            serial_number=a.get("serial_number") or "",
         )
+        if fw := a.get("firmware_version"):
+            info["sw_version"] = fw
+        if mac := a.get("mac_address"):
+            info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
+        return info
 
     @property
     def available(self) -> bool:
-        return super().available and self._uuid in self.coordinator.data.get("statuses", {})
+        if not super().available:
+            return False
+        status = self.coordinator.data.get("statuses", {}).get(self._uuid)
+        if not status:
+            return False
+        return status.get("has_data") is not False
 
     @property
     def native_value(self) -> Any:

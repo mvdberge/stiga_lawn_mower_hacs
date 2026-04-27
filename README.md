@@ -24,7 +24,6 @@ All STIGA robots that can be controlled via the **STIGA.GO app**:
 |---|---|
 | **Start mowing** | `lawn_mower.start_mowing` |
 | **Return to dock** | `lawn_mower.dock` |
-| **Pause** | `lawn_mower.pause` (sends return to dock) |
 | **State** | `mowing`, `docked`, `paused`, `error` |
 | **Battery level** | Directly on the entity |
 
@@ -40,12 +39,19 @@ All STIGA robots that can be controlled via the **STIGA.GO app**:
 | Battery health | % |
 | Remaining capacity | mAh |
 | Total capacity | mAh |
+| Cutting height | mm (diagnostic, read-only) |
+| Total work time | (diagnostic) |
 
 ### LawnMower Entity Attributes
 - `mowing_mode_raw` – Raw API value (`SCHEDULED`, `WORKING`, …)
 - `mowing_mode_label` – Human-readable status
 - `serial_number`, `product_code`, `device_type`
+- `last_used`, `total_work_time`, `base_uuid`, `lte_version`, `rain_sensor`, `schedule_enabled`
 - All battery detail values
+
+### Device Registry
+- Firmware version (`sw_version`) and MAC address are reported when the cloud
+  exposes them via `/api/garage`
 
 ---
 
@@ -123,8 +129,10 @@ automation:
 
 ## Known Limitations
 
-- The public API does not document a dedicated **pause command**;  
-  `pause` therefore sends `endsession` (return to dock).
+- **No pause command.** The public STIGA Integration REST API only exposes
+  `startsession` and `endsession` (= return to dock). A real "stop in place"
+  command exists in the underlying MQTT protocol but is not part of the
+  documented REST API, so this integration does not advertise pause.
 - Zone control (mowing specific zones 1–10) is not directly possible via  
   the standard `lawn_mower.start_mowing` service –  
   use the script approach with the Python tool for that.

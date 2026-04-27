@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.6.0] - 2026-04-27
+### Added
+- **Firmware version** is now reported in the device registry (`sw_version`)
+- **MAC address** is now linked to the device record so Home Assistant can correlate the mower with other network entities
+- **Cutting Height** sensor (mm, diagnostic) — read-only mirror of the value configured in the STIGA.GO app
+- **Total Work Time** sensor (diagnostic, total-increasing)
+- New entity attributes on the lawn mower entity: `last_used`, `lte_version`, `total_work_time`, `base_uuid`, `rain_sensor`, `schedule_enabled`
+- Coverage for the `ROBOT_ERROR` value of `currentAction` (now mapped to *Error* state)
+
+### Changed
+- Device list is now fetched from the richer `/api/garage` endpoint when reachable, with an automatic fallback to the documented `/api/garage/integration` endpoint if the cloud refuses it. The integration continues to work either way
+
+---
+
+## [1.5.0] - 2026-04-27
+### Added
+- Honour the `hasData` flag from the STIGA cloud — when the mower reports no fresh telemetry, the lawn mower entity and all sensors go *unavailable* instead of showing stale values
+
+### Changed
+- Removed the *Pause* feature from the lawn mower entity. STIGA's public REST API has no pause command — `endsession` sends the robot back to the dock, which is the same as *Dock*. Advertising both was misleading
+- Cleaned up the `extra_*` state attributes: the nested `battery` payload is no longer echoed as `extra_battery` (its values are already exposed as dedicated sensors)
+
+---
+
 ## [1.4.2] - 2026-04-22
 ### Changed
 - Update the brand assets as required by the Home Assistant Brands proxy: `icon.png` (256×256), `icon@2x.png` (512×512), `logo.png` (360×256), `logo@2x.png` (719×512). The previous `icon.png` was 32×32 and displayed pixelated in the integration list.

@@ -81,10 +81,12 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                     if not uuid:
                         continue
                     try:
-                        statuses[uuid] = await self.api.get_device_status(uuid)
+                        status = await self.api.get_device_status(uuid)
                     except StigaApiError as err:
                         _LOGGER.debug("Status fetch for %s failed: %s", uuid, err)
-                        statuses[uuid] = previous.get(uuid, {})
+                        status = previous.get(uuid, {})
+                    _enrich_status_from_device(status, device)
+                    statuses[uuid] = status
 
             if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 ir.async_delete_issue(self.hass, DOMAIN, _ISSUE_CONNECTION)
@@ -119,3 +121,28 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
 
 def _device_uuid(device: dict) -> str:
     return (device.get("attributes") or {}).get("uuid", "")
+
+
+def _enrich_status_from_device(status: dict, device: dict) -> None:
+    """Merge sensor-relevant fields from /api/garage device attributes into status.
+
+    The undocumented `/api/garage` endpoint returns attributes like
+    `total_work_time` and `parsedSettings.cutting_height` that the documented
+    `/api/garage/integration` does not. When those fields are present we
+    surface them to the entity layer; otherwise the sensor goes unavailable.
+    """
+    attrs = device.get("attributes") or {}
+
+    twt = attrs.get("total_work_time")
+    if isinstance(twt, (int, float)):
+        status["total_work_time"] = int(twt)
+
+    settings = attrs.get("settings")
+    if isinstance(settings, list) and settings:
+        parsed = (settings[0] or {}).get("parsedSettings") or {}
+        ch = parsed.get("cutting_height")
+        if isinstance(ch, str) and ch.lower().endswith("mm"):
+            try:
+                status["cutting_height_mm"] = int(ch[:-2])
+            except ValueError:
+                pass

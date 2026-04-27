@@ -14,6 +14,12 @@ FIREBASE_AUTH_URL = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/
 
 # STIGA Cloud API
 STIGA_BASE_URL = "https://connectivity-production.stiga.com/api"
+
+# /garage returns a strict superset of /garage/integration (firmware_version,
+# mac_address, base_uuid, total_work_time, last_used, parsedSettings, etc.)
+# but is not part of the published Integration API. We try it first and fall
+# back to the documented endpoint if the cloud ever stops returning it.
+EP_GARAGE_FULL = "/garage"
 EP_GARAGE      = "/garage/integration"
 EP_STATUS      = "/devices/{uuid}/mqttstatus"
 EP_START       = "/devices/{uuid}/command/startsession"
@@ -34,6 +40,13 @@ ATTR_BATTERY_TIME_LEFT   = "battery_time_left_min"
 ATTR_BATTERY_CURRENT     = "battery_current_a"
 ATTR_ERROR_CODE          = "error_code"
 ATTR_ERROR_DESCRIPTION   = "error_description"
+ATTR_LAST_USED           = "last_used"
+ATTR_LTE_VERSION         = "lte_version"
+ATTR_TOTAL_WORK_TIME     = "total_work_time"
+ATTR_CUTTING_HEIGHT      = "cutting_height_mm"
+ATTR_RAIN_SENSOR         = "rain_sensor"
+ATTR_BASE_UUID           = "base_uuid"
+ATTR_WORKING_DAYTIMES_ON = "schedule_enabled"
 
 # Error / status info codes. Cross-checked against
 # https://github.com/matthewgream/stiga-api (ROBOT_STATUS_INFO_CODES).

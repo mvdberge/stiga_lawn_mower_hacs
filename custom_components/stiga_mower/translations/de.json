@@ -60,7 +60,9 @@
       "battery_cycles":    { "name": "Ladezyklen" },
       "battery_health":    { "name": "Batteriezustand" },
       "battery_capacity":  { "name": "Batteriekapazität" },
-      "battery_remaining": { "name": "Verbleibende Kapazität" }
+      "battery_remaining": { "name": "Verbleibende Kapazität" },
+      "cutting_height":    { "name": "Schnitthöhe" },
+      "total_work_time":   { "name": "Gesamtarbeitszeit" }
     }
   }
 }

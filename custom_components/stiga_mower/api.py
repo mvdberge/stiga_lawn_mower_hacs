@@ -12,6 +12,7 @@ from .const import (
     FIREBASE_AUTH_URL,
     STIGA_BASE_URL,
     EP_GARAGE,
+    EP_GARAGE_FULL,
     EP_STATUS,
     EP_START,
     EP_STOP,
@@ -117,11 +118,28 @@ class StigaAPI:
     # ------------------------------------------------------------------ Devices
 
     async def get_devices(self) -> list[dict]:
+        """Return the device list, preferring the richer /garage endpoint.
+
+        The undocumented `/garage` returns the same structure as the
+        documented `/garage/integration` but with extra attributes such as
+        `firmware_version`, `mac_address`, `base_uuid`, `total_work_time`,
+        `last_used` and `parsedSettings`. We use it when available and fall
+        back to the official endpoint otherwise.
         """
-        GET /garage/integration
-        Per official docs: { "Data": [ { "type": ..., "attributes": { uuid, name, ... } } ] }
-        """
+        try:
+            raw = await self._get(EP_GARAGE_FULL)
+            devices = self._extract_devices(raw)
+            if devices:
+                return devices
+            _LOGGER.debug("/garage returned no devices, falling back to /garage/integration")
+        except StigaApiError as err:
+            _LOGGER.debug("/garage unavailable (%s) – using /garage/integration", err)
+
         raw = await self._get(EP_GARAGE)
+        return self._extract_devices(raw)
+
+    @staticmethod
+    def _extract_devices(raw) -> list[dict]:
         if isinstance(raw, list):
             return raw
         if isinstance(raw, dict):
@@ -186,15 +204,16 @@ class StigaAPI:
     @staticmethod
     def _build_status(s: dict, b: dict) -> dict:
         """Build a flat status dict from raw API data."""
-        ca      = s.get("currentAction")
-        mm      = s.get("mowingMode")
-        pct     = b.get("percentage")
-        voltage = b.get("voltage")
-        cap     = b.get("capacity")
-        rem     = b.get("remainingCapacity")
-        cycles  = b.get("numberOfCycles")
-        t_left  = b.get("dischargingTime")
-        current = b.get("current")
+        ca       = s.get("currentAction")
+        mm       = s.get("mowingMode")
+        has_data = s.get("hasData")
+        pct      = b.get("percentage")
+        voltage  = b.get("voltage")
+        cap      = b.get("capacity")
+        rem      = b.get("remainingCapacity")
+        cycles   = b.get("numberOfCycles")
+        t_left   = b.get("dischargingTime")
+        current  = b.get("current")
         charging = b.get("charging")
 
         power_w = None
@@ -205,7 +224,14 @@ class StigaAPI:
         if cap and rem:
             health = round((rem / cap) * 100, 1)
 
+        # Fields already represented as first-class attributes – don't echo them
+        # back into `extra`. `battery` is excluded because it's a sub-dict and
+        # rendering `extra_battery: {...}` on the entity isn't useful.
+        _consumed = {"mowingMode", "currentAction", "errorCode", "isDocked",
+                     "hasData", "battery"}
+
         return {
+            "has_data":          has_data,
             "mowing_mode":       mm,
             "current_action":    ca,
             "is_docked":         s.get("isDocked"),
@@ -221,11 +247,8 @@ class StigaAPI:
             "battery_current":   round(current, 4) if current is not None else None,
             "battery_power_w":   power_w,
             "battery_health":    health,
-            # Additional raw fields
-            "extra": {
-                k: v for k, v in s.items()
-                if k not in ("mowingMode", "currentAction", "errorCode", "isDocked")
-            },
+            # Additional raw fields not yet mapped above
+            "extra": {k: v for k, v in s.items() if k not in _consumed},
         }
 
     # ------------------------------------------------------------------ Commands

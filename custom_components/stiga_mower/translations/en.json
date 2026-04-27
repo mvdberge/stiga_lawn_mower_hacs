@@ -54,7 +54,9 @@
       "battery_cycles":    { "name": "Charge Cycles" },
       "battery_health":    { "name": "Battery Health" },
       "battery_capacity":  { "name": "Battery Capacity" },
-      "battery_remaining": { "name": "Remaining Capacity" }
+      "battery_remaining": { "name": "Remaining Capacity" },
+      "cutting_height":    { "name": "Cutting Height" },
+      "total_work_time":   { "name": "Total Work Time" }
     }
   }
 }

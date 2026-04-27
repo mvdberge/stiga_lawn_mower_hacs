@@ -189,11 +189,12 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     @property
     def device_info(self) -> DeviceInfo:
         a = self._device_attrs()
+        meta = self.coordinator.data.get("meta", {}).get(self._uuid, {})
         info = DeviceInfo(
             identifiers={(DOMAIN, self._uuid)},
             name=a.get("name") or self._uuid,
             manufacturer="STIGA",
-            model=a.get("product_code") or a.get("device_type") or "",
+            model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
             serial_number=a.get("serial_number") or "",
         )
         if fw := a.get("firmware_version"):

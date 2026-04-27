@@ -41,6 +41,10 @@ All STIGA robots that can be controlled via the **STIGA.GO app**:
 | Total capacity | mAh |
 | Cutting height | mm (diagnostic, read-only) |
 | Total work time | (diagnostic) |
+| Garden area | m² (diagnostic, refreshed every 6h) |
+| Zones | count (diagnostic, refreshed every 6h) |
+| Obstacles | count (diagnostic, refreshed every 6h) |
+| Obstacle area | m² (diagnostic, refreshed every 6h) |
 
 ### LawnMower Entity Attributes
 - `mowing_mode_raw` – Raw API value (`SCHEDULED`, `WORKING`, …)

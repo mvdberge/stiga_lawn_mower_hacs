@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util import dt as dt_util
 
 from .api import StigaAPI, StigaApiError, StigaAuthError
 from .const import DOMAIN, UPDATE_INTERVAL
@@ -22,6 +23,11 @@ MAX_CONSECUTIVE_FAILURES = 3
 
 _UPDATE_TIMEOUT = UPDATE_INTERVAL - 5
 
+# Static metadata (model name, garden perimeter) only changes when the user
+# touches the STIGA.GO app. We refresh it every 6 hours instead of once per
+# integration setup so updates eventually propagate without forcing a reload.
+META_REFRESH_INTERVAL = timedelta(hours=6)
+
 
 class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
     """
@@ -29,16 +35,13 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
 
     data structure after update:
     {
-        "devices": [ { "attributes": { "uuid": ..., "name": ..., ... } }, ... ],
-        "statuses": {
-            "<uuid>": {
-                "mowing_mode":    str | int,
-                "current_action": str | int,
-                "battery_level":  int,
-                ...
-            },
-            ...
-        }
+        "devices":  [ { "attributes": { "uuid": ..., "name": ..., ... } }, ... ],
+        "statuses": { "<uuid>": { "mowing_mode": ..., "battery_level": ..., ... }, ... },
+        "meta":     { "<uuid>": { "model_name": "A 15v",
+                                  "garden_area_m2": 656,
+                                  "zone_count": 5,
+                                  "obstacle_count": 8,
+                                  "obstacle_area_m2": 69.2 }, ... }
     }
     """
 
@@ -46,6 +49,8 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self.api = api
         self._consecutive_failures = 0
         self._devices: list[dict] = []
+        self._meta: dict[str, dict] = {}
+        self._meta_next_refresh: datetime | None = None
         super().__init__(
             hass,
             _LOGGER,
@@ -55,10 +60,33 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         )
 
     async def _async_setup(self) -> None:
-        """Fetch the initial device list."""
+        """Fetch the initial device list and the first batch of static metadata."""
         self._devices = await self.api.get_devices()
         if not self._devices:
             raise UpdateFailed("No STIGA devices found for this account.")
+        await self._refresh_meta()
+        self._meta_next_refresh = dt_util.utcnow() + META_REFRESH_INTERVAL
+
+    async def _refresh_meta(self) -> None:
+        """Best-effort fetch of model name + perimeter for each device.
+
+        Both endpoints are undocumented. Failure is non-fatal: the meta dict
+        simply won't include the missing keys and the corresponding sensors
+        stay unavailable.
+        """
+        for device in self._devices:
+            uuid = _device_uuid(device)
+            if not uuid:
+                continue
+            entry: dict = {}
+            extended = await self.api.get_device_extended(uuid)
+            entry.update(_extract_model_name(extended))
+            base_uuid = (device.get("attributes") or {}).get("base_uuid")
+            if base_uuid:
+                perimeter = await self.api.get_perimeter(uuid, base_uuid)
+                entry.update(_extract_perimeter(perimeter))
+            if entry:
+                self._meta[uuid] = entry
 
     async def _async_update_data(self) -> dict:
         """Refresh devices and status for all known devices."""
@@ -88,6 +116,17 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                     _enrich_status_from_device(status, device)
                     statuses[uuid] = status
 
+            # Schedule a meta refresh every META_REFRESH_INTERVAL so changes
+            # the user makes in the STIGA.GO app (e.g. re-drawing the
+            # perimeter, renaming the mower) propagate without an integration
+            # reload. Fire-and-forget so a slow `/perimeters` or `/devices/{uuid}`
+            # call cannot trip the regular polling cycle. The next regular
+            # update will publish the refreshed meta to listeners.
+            now = dt_util.utcnow()
+            if self._meta_next_refresh is None or now >= self._meta_next_refresh:
+                self._meta_next_refresh = now + META_REFRESH_INTERVAL
+                self.hass.async_create_task(self._refresh_meta())
+
             if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 ir.async_delete_issue(self.hass, DOMAIN, _ISSUE_CONNECTION)
                 _LOGGER.info(
@@ -96,7 +135,11 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                 )
             self._consecutive_failures = 0
 
-            return {"devices": self._devices, "statuses": statuses}
+            return {
+                "devices":  self._devices,
+                "statuses": statuses,
+                "meta":     self._meta,
+            }
 
         except StigaAuthError as err:
             raise ConfigEntryAuthFailed from err
@@ -146,3 +189,35 @@ def _enrich_status_from_device(status: dict, device: dict) -> None:
                 status["cutting_height_mm"] = int(ch[:-2])
             except ValueError:
                 pass
+
+
+def _extract_model_name(extended: dict) -> dict:
+    """Pull friendly model name (`A 15v`) from /devices/{uuid} `included[]`."""
+    for inc in (extended.get("included") or []):
+        if inc.get("type") != "DeviceDetails":
+            continue
+        items = ((inc.get("attributes") or {}).get("soap_info") or {}).get("item")
+        if isinstance(items, list) and items:
+            name = (items[0] or {}).get("Name")
+            if isinstance(name, str) and name:
+                return {"model_name": name}
+    return {}
+
+
+def _extract_perimeter(perimeter: dict) -> dict:
+    """Flatten /perimeters response into the small set of fields we surface."""
+    preview = ((perimeter.get("data") or {}).get("attributes") or {}).get("preview") or {}
+    if not preview:
+        return {}
+    out: dict = {}
+    if (m2 := preview.get("m2Area")) is not None:
+        out["garden_area_m2"] = m2
+    zones = preview.get("zones") or {}
+    if (zn := zones.get("num")) is not None:
+        out["zone_count"] = zn
+    obstacles = preview.get("obstacles") or {}
+    if (obn := obstacles.get("num")) is not None:
+        out["obstacle_count"] = obn
+    if (oba := obstacles.get("m2Area")) is not None:
+        out["obstacle_area_m2"] = oba
+    return out

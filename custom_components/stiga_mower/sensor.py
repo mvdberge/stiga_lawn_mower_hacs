@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     PERCENTAGE,
     EntityCategory,
+    UnitOfArea,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
     UnitOfLength,
@@ -35,8 +36,14 @@ PARALLEL_UPDATES = 1
 
 @dataclass(frozen=True, kw_only=True)
 class StigaSensorDescription(SensorEntityDescription):
-    """Extended sensor description with API key."""
+    """Extended sensor description with API key.
+
+    `source` selects where the value lives in `coordinator.data`:
+      - "status": per-cycle live data from `/mqttstatus` (battery, etc.)
+      - "meta":   one-shot static data from setup (perimeter, model name)
+    """
     status_key: str = ""
+    source: str = "status"
 
 
 SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
@@ -133,6 +140,45 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
     ),
+    # Static perimeter sensors – one-shot values fetched at setup from the
+    # undocumented /api/perimeters endpoint. Unavailable when /perimeters
+    # cannot be reached or when the user hasn't drawn a perimeter yet.
+    StigaSensorDescription(
+        key="garden_area",
+        status_key="garden_area_m2",
+        source="meta",
+        translation_key="garden_area",
+        native_unit_of_measurement=UnitOfArea.SQUARE_METERS,
+        device_class=SensorDeviceClass.AREA,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    StigaSensorDescription(
+        key="zone_count",
+        status_key="zone_count",
+        source="meta",
+        translation_key="zone_count",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    StigaSensorDescription(
+        key="obstacle_count",
+        status_key="obstacle_count",
+        source="meta",
+        translation_key="obstacle_count",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    StigaSensorDescription(
+        key="obstacle_area",
+        status_key="obstacle_area_m2",
+        source="meta",
+        translation_key="obstacle_area",
+        native_unit_of_measurement=UnitOfArea.SQUARE_METERS,
+        device_class=SensorDeviceClass.AREA,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+    ),
 )
 
 
@@ -141,19 +187,28 @@ async def async_setup_entry(
     entry: StigaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
-    """Set up sensor entities for all STIGA robots."""
+    """Set up sensor entities for all STIGA robots.
+
+    Track per `(uuid, description.key)` so that integration upgrades that add
+    new sensor descriptions automatically create the corresponding entities
+    on the next coordinator update — no need to remove and re-add the
+    integration.
+    """
     coordinator = entry.runtime_data
-    known: set[str] = set()
+    known: set[tuple[str, str]] = set()
 
     @callback
     def _add_new_entities() -> None:
         new_entities: list[StigaSensor] = []
         for device in coordinator.data.get("devices", []):
             uuid = _dev_uuid(device)
-            if not uuid or uuid in known:
+            if not uuid:
                 continue
-            known.add(uuid)
             for description in SENSOR_DESCRIPTIONS:
+                key = (uuid, description.key)
+                if key in known:
+                    continue
+                known.add(key)
                 new_entities.append(StigaSensor(coordinator, device, description))
         if new_entities:
             async_add_entities(new_entities)
@@ -188,11 +243,12 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
     @property
     def device_info(self) -> DeviceInfo:
         a = self._device_attrs()
+        meta = self.coordinator.data.get("meta", {}).get(self._uuid, {})
         info = DeviceInfo(
             identifiers={(DOMAIN, self._uuid)},
             name=a.get("name") or self._uuid,
             manufacturer="STIGA",
-            model=a.get("product_code") or a.get("device_type") or "",
+            model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
             serial_number=a.get("serial_number") or "",
         )
         if fw := a.get("firmware_version"):
@@ -205,6 +261,8 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
     def available(self) -> bool:
         if not super().available:
             return False
+        if self.entity_description.source == "meta":
+            return self._uuid in self.coordinator.data.get("meta", {})
         status = self.coordinator.data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
@@ -212,8 +270,11 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
 
     @property
     def native_value(self) -> Any:
+        desc = self.entity_description
+        if desc.source == "meta":
+            return self.coordinator.data.get("meta", {}).get(self._uuid, {}).get(desc.status_key)
         status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
-        return status.get(self.entity_description.status_key)
+        return status.get(desc.status_key)
 
 
 def _dev_uuid(device: dict) -> str:

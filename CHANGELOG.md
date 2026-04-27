@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.7.0] - 2026-04-27
+### Added
+- Friendly model name in the device registry — e.g. *A 15v* instead of `2R7112028/ST1` (from `/api/devices/{uuid}`)
+- Garden perimeter sensors from `/api/perimeters` (all diagnostic):
+  - **Garden Area** (m²)
+  - **Zones** (count)
+  - **Obstacles** (count)
+  - **Obstacle Area** (m²)
+- New sensor descriptions added in future integration releases now appear automatically on the next coordinator update — no need to remove and re-add the integration
+
+### Changed
+- Static metadata (friendly model name + perimeter) is fetched at setup and refreshed every 6 hours, so changes made in the STIGA.GO app (re-drawing the perimeter, renaming the mower) propagate without an integration reload. If those undocumented endpoints are unavailable the corresponding sensors stay unavailable but core functionality is unaffected
+
+---
+
 ## [1.6.0] - 2026-04-27
 ### Added
 - **Firmware version** is now reported in the device registry (`sw_version`)

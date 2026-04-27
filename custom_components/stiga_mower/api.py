@@ -11,8 +11,10 @@ from .const import (
     FIREBASE_API_KEY,
     FIREBASE_AUTH_URL,
     STIGA_BASE_URL,
+    EP_DEVICE,
     EP_GARAGE,
     EP_GARAGE_FULL,
+    EP_PERIMETER,
     EP_STATUS,
     EP_START,
     EP_STOP,
@@ -148,6 +150,33 @@ class StigaAPI:
                     return raw[key]
             return [raw]
         return []
+
+    async def get_device_extended(self, uuid: str) -> dict:
+        """GET /devices/{uuid} – richer per-device record with `included[]`.
+
+        Undocumented; only used to surface the friendly model name (e.g.
+        "A 15v") via `included[].DeviceDetails.attributes.soap_info.item[0].Name`.
+        Returns the raw response or `{}` on failure.
+        """
+        try:
+            return await self._get(EP_DEVICE.format(uuid=uuid)) or {}
+        except StigaApiError as err:
+            _LOGGER.debug("/devices/%s unavailable: %s", uuid, err)
+            return {}
+
+    async def get_perimeter(self, uuid: str, base_uuid: str) -> dict:
+        """GET /perimeters?device_uuid=&base_uuid= – garden perimeter summary.
+
+        Both query params are mandatory. Undocumented. Returns the raw
+        response or `{}` on failure.
+        """
+        try:
+            return await self._get(
+                EP_PERIMETER.format(uuid=uuid, base_uuid=base_uuid)
+            ) or {}
+        except StigaApiError as err:
+            _LOGGER.debug("/perimeters for %s unavailable: %s", uuid, err)
+            return {}
 
     # ------------------------------------------------------------------ Status
 

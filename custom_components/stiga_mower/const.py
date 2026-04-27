@@ -24,6 +24,11 @@ EP_GARAGE      = "/garage/integration"
 EP_STATUS      = "/devices/{uuid}/mqttstatus"
 EP_START       = "/devices/{uuid}/command/startsession"
 EP_STOP        = "/devices/{uuid}/command/endsession"
+# Undocumented endpoints — fetched once at setup. If the cloud removes them
+# the integration still works, but the perimeter sensors and the friendly
+# model name will be unavailable. See API_INTERNAL.md for response shapes.
+EP_DEVICE      = "/devices/{uuid}"
+EP_PERIMETER   = "/perimeters?device_uuid={uuid}&base_uuid={base_uuid}"
 
 # Device attributes (from official API documentation)
 ATTR_SERIAL_NUMBER   = "serial_number"
@@ -47,6 +52,10 @@ ATTR_CUTTING_HEIGHT      = "cutting_height_mm"
 ATTR_RAIN_SENSOR         = "rain_sensor"
 ATTR_BASE_UUID           = "base_uuid"
 ATTR_WORKING_DAYTIMES_ON = "schedule_enabled"
+ATTR_GARDEN_AREA         = "garden_area_m2"
+ATTR_ZONE_COUNT          = "zone_count"
+ATTR_OBSTACLE_COUNT      = "obstacle_count"
+ATTR_OBSTACLE_AREA       = "obstacle_area_m2"
 
 # Error / status info codes. Cross-checked against
 # https://github.com/matthewgream/stiga-api (ROBOT_STATUS_INFO_CODES).

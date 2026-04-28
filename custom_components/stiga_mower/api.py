@@ -8,17 +8,17 @@ import logging
 import aiohttp
 
 from .const import (
-    FIREBASE_API_KEY,
-    FIREBASE_AUTH_URL,
-    STIGA_BASE_URL,
     EP_DEVICE,
     EP_GARAGE,
     EP_GARAGE_FULL,
     EP_PERIMETER,
-    EP_STATUS,
     EP_START,
+    EP_STATUS,
     EP_STOP,
+    FIREBASE_API_KEY,
+    FIREBASE_AUTH_URL,
     REQUEST_TIMEOUT,
+    STIGA_BASE_URL,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,9 +41,9 @@ class StigaAPI:
     """
 
     def __init__(self, email: str, password: str, session: aiohttp.ClientSession) -> None:
-        self._email    = email
+        self._email = email
         self._password = password
-        self._session  = session
+        self._session = session
         self._token: str | None = None
 
     # ------------------------------------------------------------------ Auth
@@ -55,8 +55,8 @@ class StigaAPI:
             async with self._session.post(
                 FIREBASE_AUTH_URL,
                 json={
-                    "email":             self._email,
-                    "password":          self._password,
+                    "email": self._email,
+                    "password": self._password,
                     "returnSecureToken": True,
                 },
                 params={"key": FIREBASE_API_KEY},
@@ -70,6 +70,19 @@ class StigaAPI:
                 _LOGGER.debug("Firebase authentication successful.")
         except aiohttp.ClientError as err:
             raise StigaApiError(f"Network error during authentication: {err}") from err
+
+    async def get_token(self) -> str:
+        """Return a fresh Firebase id-token, re-authenticating each call.
+
+        The MQTT client uses this as its credential provider and calls it
+        roughly every 50 minutes (well within the 60-minute Firebase
+        validity window). Going through `authenticate()` on every call is
+        cheap relative to the cycle and avoids tracking expiry ourselves.
+        """
+        await self.authenticate()
+        if not self._token:
+            raise StigaAuthError("authenticate() returned without a token")
+        return self._token
 
     def _auth_header(self) -> dict:
         return {"Authorization": f"Bearer {self._token}"}
@@ -171,9 +184,7 @@ class StigaAPI:
         response or `{}` on failure.
         """
         try:
-            return await self._get(
-                EP_PERIMETER.format(uuid=uuid, base_uuid=base_uuid)
-            ) or {}
+            return await self._get(EP_PERIMETER.format(uuid=uuid, base_uuid=base_uuid)) or {}
         except StigaApiError as err:
             _LOGGER.debug("/perimeters for %s unavailable: %s", uuid, err)
             return {}
@@ -211,9 +222,9 @@ class StigaAPI:
         """
         # Structure 1: data.attributes.device_info (vista_robot, autonomous_robot)
         try:
-            info   = raw["data"]["attributes"]["device_info"]
+            info = raw["data"]["attributes"]["device_info"]
             status = self._load_json_field(info["status"]["description"])
-            batt   = self._load_json_field(info["battery"]["description"])
+            batt = self._load_json_field(info["battery"]["description"])
             return self._build_status(status, batt)
         except (KeyError, TypeError):
             pass
@@ -233,16 +244,16 @@ class StigaAPI:
     @staticmethod
     def _build_status(s: dict, b: dict) -> dict:
         """Build a flat status dict from raw API data."""
-        ca       = s.get("currentAction")
-        mm       = s.get("mowingMode")
+        ca = s.get("currentAction")
+        mm = s.get("mowingMode")
         has_data = s.get("hasData")
-        pct      = b.get("percentage")
-        voltage  = b.get("voltage")
-        cap      = b.get("capacity")
-        rem      = b.get("remainingCapacity")
-        cycles   = b.get("numberOfCycles")
-        t_left   = b.get("dischargingTime")
-        current  = b.get("current")
+        pct = b.get("percentage")
+        voltage = b.get("voltage")
+        cap = b.get("capacity")
+        rem = b.get("remainingCapacity")
+        cycles = b.get("numberOfCycles")
+        t_left = b.get("dischargingTime")
+        current = b.get("current")
         charging = b.get("charging")
 
         power_w = None
@@ -256,26 +267,25 @@ class StigaAPI:
         # Fields already represented as first-class attributes – don't echo them
         # back into `extra`. `battery` is excluded because it's a sub-dict and
         # rendering `extra_battery: {...}` on the entity isn't useful.
-        _consumed = {"mowingMode", "currentAction", "errorCode", "isDocked",
-                     "hasData", "battery"}
+        _consumed = {"mowingMode", "currentAction", "errorCode", "isDocked", "hasData", "battery"}
 
         return {
-            "has_data":          has_data,
-            "mowing_mode":       mm,
-            "current_action":    ca,
-            "is_docked":         s.get("isDocked"),
-            "error_code":        s.get("errorCode"),
+            "has_data": has_data,
+            "mowing_mode": mm,
+            "current_action": ca,
+            "is_docked": s.get("isDocked"),
+            "error_code": s.get("errorCode"),
             # Batterie
-            "battery_level":     pct,
-            "battery_charging":  charging,
-            "battery_voltage":   round(voltage, 3) if voltage else None,
-            "battery_capacity":  cap,
+            "battery_level": pct,
+            "battery_charging": charging,
+            "battery_voltage": round(voltage, 3) if voltage else None,
+            "battery_capacity": cap,
             "battery_remaining": rem,
-            "battery_cycles":    cycles,
+            "battery_cycles": cycles,
             "battery_time_left": t_left,
-            "battery_current":   round(current, 4) if current is not None else None,
-            "battery_power_w":   power_w,
-            "battery_health":    health,
+            "battery_current": round(current, 4) if current is not None else None,
+            "battery_power_w": power_w,
+            "battery_health": health,
             # Additional raw fields not yet mapped above
             "extra": {k: v for k, v in s.items() if k not in _consumed},
         }

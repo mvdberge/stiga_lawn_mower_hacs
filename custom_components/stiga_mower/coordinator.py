@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -15,6 +17,7 @@ from homeassistant.util import dt as dt_util
 
 from .api import StigaAPI, StigaApiError, StigaAuthError
 from .const import DOMAIN, UPDATE_INTERVAL
+from .mqtt_client import StigaMQTT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,21 +39,50 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
     data structure after update:
     {
         "devices":  [ { "attributes": { "uuid": ..., "name": ..., ... } }, ... ],
-        "statuses": { "<uuid>": { "mowing_mode": ..., "battery_level": ..., ... }, ... },
+        "statuses": { "<uuid>": { "mowing_mode": ..., "battery_level": ...,
+                                  # MQTT-only fields when available:
+                                  "current_zone": ..., "zone_completed_pct": ...,
+                                  "rssi": ..., "info_code": ..., ... }, ... },
         "meta":     { "<uuid>": { "model_name": "A 15v",
-                                  "garden_area_m2": 656,
-                                  "zone_count": 5,
-                                  "obstacle_count": 8,
-                                  "obstacle_area_m2": 69.2 }, ... }
+                                  "garden_area_m2": 656, ... }, ... },
+        "mqtt_connected": bool,
+        "live_position": { "<uuid>": {"lat_offset_m": ..., ...} },
+        "live_settings": { "<uuid>": {...} },
+        "live_schedule": { "<uuid>": {...} },
+        "live_base_status": { "<base_uuid>": {...} },
     }
+
+    The coordinator is push-driven for MQTT frames (each frame triggers
+    `async_set_updated_data` so entities update immediately) and pull-driven
+    for REST data (every UPDATE_INTERVAL seconds for liveness + state that
+    only the cloud knows: total_work_time, perimeter, model name).
     """
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry, api: StigaAPI) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        api: StigaAPI,
+        mqtt: StigaMQTT | None = None,
+    ) -> None:
         self.api = api
+        self.mqtt = mqtt
         self._consecutive_failures = 0
         self._devices: list[dict] = []
         self._meta: dict[str, dict] = {}
         self._meta_next_refresh: datetime | None = None
+
+        # Latest MQTT pushes, keyed by MAC address. Status frames feed into
+        # the merged per-device `statuses[uuid]` dict; the others stay in
+        # their own buckets so the entity layer (Phase 4 onwards) can pick
+        # them up without reaching back into raw protobuf.
+        self._live_status: dict[str, dict[str, Any]] = {}
+        self._live_position: dict[str, dict[str, Any]] = {}
+        self._live_settings: dict[str, dict[str, Any]] = {}
+        self._live_schedule: dict[str, dict[str, Any]] = {}
+        self._live_base_status: dict[str, dict[str, Any]] = {}
+        self._mqtt_connected: bool = False
+
         super().__init__(
             hass,
             _LOGGER,
@@ -58,6 +90,89 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             config_entry=entry,
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
+
+    # -------------------------------------------------------------- MQTT wiring
+
+    def attach_mqtt(self, mqtt: StigaMQTT) -> None:
+        """Register MQTT push handlers; call once before starting the client."""
+        self.mqtt = mqtt
+        mqtt.set_handlers(
+            on_status=self._on_mqtt_status,
+            on_position=self._on_mqtt_position,
+            on_settings=self._on_mqtt_settings,
+            on_schedule=self._on_mqtt_schedule,
+            on_base_status=self._on_mqtt_base_status,
+            on_connection_change=self._on_mqtt_connected,
+        )
+
+    def _on_mqtt_status(self, mac: str, data: dict[str, Any]) -> None:
+        self._live_status[mac] = data
+        self._publish_update()
+
+    def _on_mqtt_position(self, mac: str, data: dict[str, Any]) -> None:
+        self._live_position[mac] = data
+        self._publish_update()
+
+    def _on_mqtt_settings(self, mac: str, data: dict[str, Any]) -> None:
+        self._live_settings[mac] = data
+        self._publish_update()
+
+    def _on_mqtt_schedule(self, mac: str, data: dict[str, Any]) -> None:
+        self._live_schedule[mac] = data
+        self._publish_update()
+
+    def _on_mqtt_base_status(self, mac: str, data: dict[str, Any]) -> None:
+        self._live_base_status[mac] = data
+        self._publish_update()
+
+    def _on_mqtt_connected(self, connected: bool) -> None:
+        self._mqtt_connected = connected
+        self._publish_update()
+
+    def _publish_update(self) -> None:
+        """Push the merged state to entity listeners.
+
+        Skipped before the first regular refresh so we never publish a
+        half-built payload (entities subscribe after `_async_setup` returns).
+        """
+        if self.data is None:
+            return
+        self.async_set_updated_data(self._build_data())
+
+    # -------------------------------------------------------------- Build / merge
+
+    def _build_data(self, *, rest_statuses: dict[str, dict] | None = None) -> dict:
+        """Assemble the coordinator's `data` dict from REST + live state.
+
+        Called both at the end of the regular REST poll (with fresh
+        ``rest_statuses``) and from MQTT push handlers (which reuse the
+        statuses from the previous publish). The merged ``statuses`` dict
+        is what every entity reads from today; the ``live_*`` buckets
+        carry MQTT-only fields for new entities in later phases.
+        """
+        if rest_statuses is None:
+            rest_statuses = (self.data or {}).get("statuses", {}) or {}
+
+        statuses: dict[str, dict] = {}
+        for device in self._devices:
+            uuid = _device_uuid(device)
+            if not uuid:
+                continue
+            mac = (device.get("attributes") or {}).get("mac_address")
+            base = dict(rest_statuses.get(uuid) or {})
+            live = self._live_status.get(mac, {}) if mac else {}
+            statuses[uuid] = _merge_live_into_status(base, live)
+
+        return {
+            "devices": self._devices,
+            "statuses": statuses,
+            "meta": self._meta,
+            "mqtt_connected": self._mqtt_connected,
+            "live_position": dict(self._live_position),
+            "live_settings": dict(self._live_settings),
+            "live_schedule": dict(self._live_schedule),
+            "live_base_status": dict(self._live_base_status),
+        }
 
     async def _async_setup(self) -> None:
         """Fetch the initial device list and the first batch of static metadata."""
@@ -135,11 +250,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                 )
             self._consecutive_failures = 0
 
-            return {
-                "devices":  self._devices,
-                "statuses": statuses,
-                "meta":     self._meta,
-            }
+            return self._build_data(rest_statuses=statuses)
 
         except StigaAuthError as err:
             raise ConfigEntryAuthFailed from err
@@ -166,6 +277,63 @@ def _device_uuid(device: dict) -> str:
     return (device.get("attributes") or {}).get("uuid", "")
 
 
+# MQTT-only fields that the entity layer pre-Phase-4 doesn't render but
+# which we surface as state attributes via `extra_*` mapping. Keeping the
+# list here makes it trivial to extend without touching merge plumbing.
+_MQTT_PASSTHROUGH_FIELDS = (
+    "current_zone",
+    "zone_completed_pct",
+    "garden_completed_pct",
+    "satellites",
+    "rssi",
+    "rsrp",
+    "rsrq",
+    "rtk_quality_pct",
+    "gps_quality",
+    "signal_quality_pct",
+    "info_label",
+    "info_sensor",
+    "operable",
+    "lat_offset_cm",
+    "lon_offset_cm",
+)
+
+
+def _merge_live_into_status(base: dict, live: dict) -> dict:
+    """Layer an MQTT status frame on top of the REST status dict.
+
+    The entity layer reads from ``current_action``, ``mowing_mode``,
+    ``is_docked``, ``error_code``, ``battery_level`` and ``has_data``.
+    MQTT speaks ``status_type``, ``docking``, ``info_code`` etc.; this
+    function translates the live frame into the REST schema so neither
+    lawn_mower.py nor sensor.py needs to know about MQTT.
+    """
+    out = dict(base)
+    if not live:
+        return out
+
+    if (status_type := live.get("status_type")) is not None:
+        # status_type strings (DOCKED, MOWING, GOING_HOME, …) intentionally
+        # match the REST currentAction values matthewgream reverse-engineered
+        # from the same protobuf, so the existing _CURRENT_ACTION map in
+        # lawn_mower.py covers them without translation.
+        out["current_action"] = status_type
+    if (battery_level := live.get("battery_level")) is not None:
+        out["battery_level"] = battery_level
+    if (docking := live.get("docking")) is not None:
+        out["is_docked"] = docking
+    if (info_code := live.get("info_code")) is not None:
+        out["error_code"] = info_code
+    # Any live frame proves the mower is online and emitting data.
+    out["has_data"] = True
+
+    for key in _MQTT_PASSTHROUGH_FIELDS:
+        if key in live:
+            out[key] = live[key]
+
+    return out
+
+
 def _enrich_status_from_device(status: dict, device: dict) -> None:
     """Merge sensor-relevant fields from /api/garage device attributes into status.
 
@@ -185,15 +353,13 @@ def _enrich_status_from_device(status: dict, device: dict) -> None:
         parsed = (settings[0] or {}).get("parsedSettings") or {}
         ch = parsed.get("cutting_height")
         if isinstance(ch, str) and ch.lower().endswith("mm"):
-            try:
+            with contextlib.suppress(ValueError):
                 status["cutting_height_mm"] = int(ch[:-2])
-            except ValueError:
-                pass
 
 
 def _extract_model_name(extended: dict) -> dict:
     """Pull friendly model name (`A 15v`) from /devices/{uuid} `included[]`."""
-    for inc in (extended.get("included") or []):
+    for inc in extended.get("included") or []:
         if inc.get("type") != "DeviceDetails":
             continue
         items = ((inc.get("attributes") or {}).get("soap_info") or {}).get("item")

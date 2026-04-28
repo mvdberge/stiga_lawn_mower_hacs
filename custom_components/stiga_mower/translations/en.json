@@ -1,4 +1,10 @@
 {
+  "issues": {
+    "connection_error": {
+      "title": "STIGA cloud connection failed",
+      "description": "Home Assistant has been unable to reach the STIGA cloud for {failures} consecutive update cycles.\n\nLast error: {error}\n\nPlease check your internet connection and verify that the STIGA service is available. This notice will disappear automatically once the connection is restored."
+    }
+  },
   "config": {
     "step": {
       "user": {
@@ -51,16 +57,78 @@
   },
   "entity": {
     "sensor": {
-      "battery_cycles":    { "name": "Charge Cycles" },
-      "battery_health":    { "name": "Battery Health" },
-      "battery_capacity":  { "name": "Battery Capacity" },
-      "battery_remaining": { "name": "Remaining Capacity" },
-      "cutting_height":    { "name": "Cutting Height" },
-      "total_work_time":   { "name": "Total Work Time" },
-      "garden_area":       { "name": "Garden Area" },
-      "zone_count":        { "name": "Zones" },
-      "obstacle_count":    { "name": "Obstacles" },
-      "obstacle_area":     { "name": "Obstacle Area" }
+      "battery_cycles":      { "name": "Charge Cycles" },
+      "battery_health":      { "name": "Battery Health" },
+      "battery_capacity":    { "name": "Battery Capacity" },
+      "battery_remaining":   { "name": "Remaining Capacity" },
+      "cutting_height":      { "name": "Cutting Height" },
+      "total_work_time":     { "name": "Total Work Time" },
+      "garden_area":         { "name": "Garden Area" },
+      "zone_count":          { "name": "Zones" },
+      "obstacle_count":      { "name": "Obstacles" },
+      "obstacle_area":       { "name": "Obstacle Area" },
+      "current_zone":        { "name": "Current Zone" },
+      "zone_completed_pct":  { "name": "Zone Progress" },
+      "garden_completed_pct":{ "name": "Garden Progress" },
+      "satellites":          { "name": "GPS Satellites" },
+      "rtk_quality_pct":     { "name": "RTK Quality" },
+      "gps_quality":         { "name": "GPS Quality" },
+      "rssi":                { "name": "RSSI" },
+      "rsrp":                { "name": "RSRP" },
+      "rsrq":                { "name": "RSRQ" },
+      "signal_quality_pct":  { "name": "Signal Quality" }
+    },
+    "binary_sensor": {
+      "mqtt_connected":  { "name": "Cloud Connection" },
+      "rain_sensor":     { "name": "Rain Sensor" },
+      "lift_sensor":     { "name": "Lift Sensor" },
+      "bump_sensor":     { "name": "Bump Sensor" },
+      "slope_sensor":    { "name": "Slope Sensor" },
+      "lid_sensor":      { "name": "Lid" },
+      "is_docked":       { "name": "Docked" },
+      "battery_charging":{ "name": "Charging" },
+      "error_active":    { "name": "Error" }
+    },
+    "device_tracker": {
+      "position": { "name": "Position" }
+    },
+    "number": {
+      "cutting_height": { "name": "Cutting Height" }
+    },
+    "switch": {
+      "rain_sensor_enabled":    { "name": "Rain Sensor" },
+      "anti_theft":             { "name": "Anti-Theft" },
+      "keyboard_lock":          { "name": "Keyboard Lock" },
+      "push_notifications":     { "name": "Push Notifications" },
+      "obstacle_notifications": { "name": "Obstacle Notifications" },
+      "smart_cutting_height":   { "name": "Smart Cutting Height" },
+      "long_exit":              { "name": "Long Exit" }
+    },
+    "select": {
+      "cutting_mode": {
+        "name": "Cutting Mode",
+        "state": {
+          "denseGrid":  "Dense Grid",
+          "chessBoard": "Chess Board",
+          "northSouth": "North-South",
+          "eastWest":   "East-West"
+        }
+      },
+      "rain_sensor_delay": {
+        "name": "Rain Delay",
+        "state": {
+          "4":  "4 hours",
+          "8":  "8 hours",
+          "12": "12 hours"
+        }
+      }
+    },
+    "button": {
+      "calibrate_blades": { "name": "Calibrate Blades" },
+      "refresh_status":   { "name": "Refresh Status" }
+    },
+    "calendar": {
+      "mowing_schedule": { "name": "Mowing Schedule" }
     }
   }
 }

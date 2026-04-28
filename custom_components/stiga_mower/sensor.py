@@ -13,6 +13,7 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import (
     PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfArea,
     UnitOfElectricCurrent,
@@ -42,6 +43,7 @@ class StigaSensorDescription(SensorEntityDescription):
       - "status": per-cycle live data from `/mqttstatus` (battery, etc.)
       - "meta":   one-shot static data from setup (perimeter, model name)
     """
+
     status_key: str = ""
     source: str = "status"
 
@@ -178,6 +180,91 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         device_class=SensorDeviceClass.AREA,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # ---- MQTT live sensors — only populated when MQTT is connected ----
+    StigaSensorDescription(
+        key="current_zone",
+        status_key="current_zone",
+        translation_key="current_zone",
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    StigaSensorDescription(
+        key="zone_completed_pct",
+        status_key="zone_completed_pct",
+        translation_key="zone_completed_pct",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    StigaSensorDescription(
+        key="garden_completed_pct",
+        status_key="garden_completed_pct",
+        translation_key="garden_completed_pct",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+    ),
+    # GPS / RTK diagnostics
+    StigaSensorDescription(
+        key="satellites",
+        status_key="satellites",
+        translation_key="satellites",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="rtk_quality_pct",
+        status_key="rtk_quality_pct",
+        translation_key="rtk_quality_pct",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="gps_quality",
+        status_key="gps_quality",
+        translation_key="gps_quality",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    # Network / cellular signal diagnostics
+    StigaSensorDescription(
+        key="rssi",
+        status_key="rssi",
+        translation_key="rssi",
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="rsrp",
+        status_key="rsrp",
+        translation_key="rsrp",
+        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="rsrq",
+        status_key="rsrq",
+        translation_key="rsrq",
+        native_unit_of_measurement="dB",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="signal_quality_pct",
+        status_key="signal_quality_pct",
+        translation_key="signal_quality_pct",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
     ),
 )
 

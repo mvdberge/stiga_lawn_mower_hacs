@@ -1,5 +1,45 @@
 # Changelog
 
+## [2.0.0] - 2026-04-28
+
+Complete rewrite of the data path: live status and commands now go through direct MQTT cloud communication instead of REST-only polling. The integration class changes from `cloud_polling` to `cloud_push`.
+
+### Added
+
+**MQTT infrastructure**
+- Direct mTLS connection to the STIGA MQTT broker (`broker.connectivity-production.stiga.com:8883`) via `aiomqtt`
+- Push-driven coordinator: every received MQTT frame calls `async_set_updated_data` immediately — no waiting for the next poll
+- Automatic token refresh every 50 minutes (Firebase token TTL is 60 minutes)
+- Automatic MQTT reconnect on transient network errors
+
+**New entities (all driven by MQTT live data)**
+- `binary_sensor`: Cloud connection, Rain sensor, Lift sensor, Bump sensor, Slope sensor, Lid, Docked, Charging, Error
+- `number`: Cutting height (20–60 mm in 5 mm steps, writable)
+- `switch`: Rain sensor, Anti-theft, Keyboard lock, Push notifications, Obstacle notifications, Smart cutting height, Long exit
+- `select`: Cutting mode (Dense Grid / Chess Board / North-South / East-West), Rain sensor delay (4 h / 8 h / 12 h)
+- `device_tracker`: Live GPS position updated from MQTT status frames
+- `button`: Calibrate blades, Refresh status
+- `calendar`: Mowing Schedule — reads the weekly schedule and exposes each time window as a recurring HA event; supports creating and deleting windows directly from the HA calendar UI, written back to the robot within seconds via MQTT
+
+**Lawn mower improvements**
+- Real **Pause** (stop-in-place via MQTT) — previously unavailable through the REST API
+- New activity state `returning` when the robot is navigating back to the dock
+
+**Sensor improvements**
+- Current zone, Zone progress, Garden progress — live from MQTT
+- Diagnostic signal sensors: GPS satellites, RTK quality, GPS quality, RSSI, RSRP, RSRQ, Signal quality
+
+### Changed
+- `iot_class` updated from `cloud_polling` to `cloud_push`
+- `manifest.json`: added `aiomqtt>=2.3.0` dependency
+- Minimum HA version bumped to 2024.4.0
+- All existing entity IDs are preserved for backward compatibility
+
+### Technical notes — schedule wire format
+STIGA Vista / A15v robots encode the weekly schedule as 7 × 6 protobuf varint values (42 logical bitmask values). Values > 127 take 2 wire bytes, which is why a full schedule blob is 56 bytes rather than the 42 bytes documented for classic A-Series robots in matthewgream/stiga-api. The decoder handles both formats transparently.
+
+---
+
 ## [1.7.0] - 2026-04-27
 ### Added
 - Friendly model name in the device registry — e.g. *A 15v* instead of `2R7112028/ST1` (from `/api/devices/{uuid}`)

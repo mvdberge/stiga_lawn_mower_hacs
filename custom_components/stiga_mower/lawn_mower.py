@@ -19,19 +19,19 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import StigaConfigEntry
 from .const import (
-    DOMAIN,
-    ATTR_SERIAL_NUMBER,
-    ATTR_PRODUCT_CODE,
+    ATTR_BASE_UUID,
     ATTR_DEVICE_TYPE,
-    ATTR_MOWING_MODE_RAW,
     ATTR_ERROR_CODE,
     ATTR_ERROR_DESCRIPTION,
     ATTR_LAST_USED,
     ATTR_LTE_VERSION,
-    ATTR_TOTAL_WORK_TIME,
+    ATTR_MOWING_MODE_RAW,
+    ATTR_PRODUCT_CODE,
     ATTR_RAIN_SENSOR,
-    ATTR_BASE_UUID,
+    ATTR_SERIAL_NUMBER,
+    ATTR_TOTAL_WORK_TIME,
     ATTR_WORKING_DAYTIMES_ON,
+    DOMAIN,
     ERROR_INFO_CODES,
 )
 from .coordinator import StigaDataUpdateCoordinator
@@ -47,37 +47,37 @@ PARALLEL_UPDATES = 1
 # protobuf MQTT payload): https://github.com/matthewgream/stiga-api
 _CURRENT_ACTION: dict[str, tuple[LawnMowerActivity, str]] = {
     # Mowing
-    "MOWING":                (LawnMowerActivity.MOWING,  "Mowing"),
-    "WORKING":               (LawnMowerActivity.MOWING,  "Mowing"),
-    "BORDER":                (LawnMowerActivity.MOWING,  "Border mowing"),
-    "BORDER_CUTTING":        (LawnMowerActivity.MOWING,  "Border mowing"),
-    "CUTTING_BORDER":        (LawnMowerActivity.MOWING,  "Border mowing"),
-    "PLANNING_ONGOING":      (LawnMowerActivity.MOWING,  "Planning"),
-    "REACHING_FIRST_POINT":  (LawnMowerActivity.MOWING,  "Heading to start point"),
-    "NAVIGATING_TO_AREA":    (LawnMowerActivity.MOWING,  "Navigating to zone"),
-    # Returning to dock
-    "GOING_HOME":            (LawnMowerActivity.PAUSED,  "Returning to dock"),
-    "BACK_HOME":             (LawnMowerActivity.PAUSED,  "Returning to dock"),
-    "BACK_HOME_MANUAL":      (LawnMowerActivity.PAUSED,  "Returning to dock"),
+    "MOWING": (LawnMowerActivity.MOWING, "Mowing"),
+    "WORKING": (LawnMowerActivity.MOWING, "Mowing"),
+    "BORDER": (LawnMowerActivity.MOWING, "Border mowing"),
+    "BORDER_CUTTING": (LawnMowerActivity.MOWING, "Border mowing"),
+    "CUTTING_BORDER": (LawnMowerActivity.MOWING, "Border mowing"),
+    "PLANNING_ONGOING": (LawnMowerActivity.MOWING, "Planning"),
+    "REACHING_FIRST_POINT": (LawnMowerActivity.MOWING, "Heading to start point"),
+    "NAVIGATING_TO_AREA": (LawnMowerActivity.MOWING, "Navigating to zone"),
+    # Returning to dock — HA has no RETURNING activity; PAUSED is closest.
+    "GOING_HOME": (LawnMowerActivity.PAUSED, "Returning to dock"),
+    "BACK_HOME": (LawnMowerActivity.PAUSED, "Returning to dock"),
+    "BACK_HOME_MANUAL": (LawnMowerActivity.PAUSED, "Returning to dock"),
     # Docked
-    "AT_HOME":               (LawnMowerActivity.DOCKED,  "At home"),
-    "CHARGING":              (LawnMowerActivity.DOCKED,  "Charging"),
-    "UPDATING":              (LawnMowerActivity.DOCKED,  "Updating firmware"),
-    "STORING_DATA":          (LawnMowerActivity.DOCKED,  "Storing data"),
+    "AT_HOME": (LawnMowerActivity.DOCKED, "At home"),
+    "CHARGING": (LawnMowerActivity.DOCKED, "Charging"),
+    "UPDATING": (LawnMowerActivity.DOCKED, "Updating firmware"),
+    "STORING_DATA": (LawnMowerActivity.DOCKED, "Storing data"),
     # Paused / idle outside the dock
-    "PAUSE":                 (LawnMowerActivity.PAUSED,  "Paused"),
-    "WAITING":               (LawnMowerActivity.PAUSED,  "Waiting for command"),
-    "WAITING_FOR_COMMAND":   (LawnMowerActivity.PAUSED,  "Waiting for command"),
-    "STOPPED":               (LawnMowerActivity.PAUSED,  "Stopped"),
-    "NONE":                  (LawnMowerActivity.PAUSED,  "Idle"),
-    "CALIBRATION":           (LawnMowerActivity.PAUSED,  "Calibrating"),
-    "BLADES_CALIBRATING":    (LawnMowerActivity.PAUSED,  "Calibrating blades"),
+    "PAUSE": (LawnMowerActivity.PAUSED, "Paused"),
+    "WAITING": (LawnMowerActivity.PAUSED, "Waiting for command"),
+    "WAITING_FOR_COMMAND": (LawnMowerActivity.PAUSED, "Waiting for command"),
+    "STOPPED": (LawnMowerActivity.PAUSED, "Stopped"),
+    "NONE": (LawnMowerActivity.PAUSED, "Idle"),
+    "CALIBRATION": (LawnMowerActivity.PAUSED, "Calibrating"),
+    "BLADES_CALIBRATING": (LawnMowerActivity.PAUSED, "Calibrating blades"),
     # Error
-    "ERROR":                 (LawnMowerActivity.ERROR,   "Error"),
-    "ROBOT_ERROR":           (LawnMowerActivity.ERROR,   "Error"),
-    "BLOCKED":               (LawnMowerActivity.ERROR,   "Blocked"),
-    "LID_OPEN":              (LawnMowerActivity.ERROR,   "Lid open"),
-    "STARTUP_REQUIRED":      (LawnMowerActivity.ERROR,   "Startup required"),
+    "ERROR": (LawnMowerActivity.ERROR, "Error"),
+    "ROBOT_ERROR": (LawnMowerActivity.ERROR, "Error"),
+    "BLOCKED": (LawnMowerActivity.ERROR, "Blocked"),
+    "LID_OPEN": (LawnMowerActivity.ERROR, "Lid open"),
+    "STARTUP_REQUIRED": (LawnMowerActivity.ERROR, "Startup required"),
 }
 
 # mowingMode describes HOW the session was started (fallback when currentAction is absent).
@@ -88,21 +88,25 @@ _CURRENT_ACTION: dict[str, tuple[LawnMowerActivity, str]] = {
 # "stopped outside". Without a stronger signal (isDocked or currentAction) we
 # can't tell, so the activity falls through to None (unknown).
 MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
-    "WORKING":    LawnMowerActivity.MOWING,
-    "BORDER":     LawnMowerActivity.MOWING,
-    "MANUAL":     LawnMowerActivity.MOWING,
+    "WORKING": LawnMowerActivity.MOWING,
+    "BORDER": LawnMowerActivity.MOWING,
+    "MANUAL": LawnMowerActivity.MOWING,
     "GOING_HOME": LawnMowerActivity.PAUSED,  # no RETURNING in HA, closest matching state
-    "PAUSE":      LawnMowerActivity.PAUSED,
-    "CHARGING":   LawnMowerActivity.DOCKED,
-    "SLEEPING":   LawnMowerActivity.DOCKED,
-    "UPDATING":   LawnMowerActivity.DOCKED,
-    "ERROR":      LawnMowerActivity.ERROR,
-    "LOCKED":     LawnMowerActivity.ERROR,
+    "PAUSE": LawnMowerActivity.PAUSED,
+    "CHARGING": LawnMowerActivity.DOCKED,
+    "SLEEPING": LawnMowerActivity.DOCKED,
+    "UPDATING": LawnMowerActivity.DOCKED,
+    "ERROR": LawnMowerActivity.ERROR,
+    "LOCKED": LawnMowerActivity.ERROR,
     # Integer codes (older autonomous_robot models)
-    1: LawnMowerActivity.MOWING,   7: LawnMowerActivity.MOWING,
-    2: LawnMowerActivity.PAUSED,   3: LawnMowerActivity.PAUSED,
-    4: LawnMowerActivity.ERROR,    6: LawnMowerActivity.ERROR,
-    5: LawnMowerActivity.DOCKED,   8: LawnMowerActivity.DOCKED,
+    1: LawnMowerActivity.MOWING,
+    7: LawnMowerActivity.MOWING,
+    2: LawnMowerActivity.PAUSED,
+    3: LawnMowerActivity.PAUSED,
+    4: LawnMowerActivity.ERROR,
+    6: LawnMowerActivity.ERROR,
+    5: LawnMowerActivity.DOCKED,
+    8: LawnMowerActivity.DOCKED,
     0: LawnMowerActivity.DOCKED,
 }
 
@@ -111,22 +115,26 @@ MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
 _AMBIGUOUS_MODES: frozenset = frozenset({"SCHEDULED", "IDLE"})
 
 MOWING_MODE_LABELS: dict[Any, str] = {
-    "WORKING":    "Mowing",
-    "BORDER":     "Border mowing",
-    "MANUAL":     "Manual",
+    "WORKING": "Mowing",
+    "BORDER": "Border mowing",
+    "MANUAL": "Manual",
     "GOING_HOME": "Returning to dock",
-    "PAUSE":      "Paused",
-    "IDLE":       "Ready",
-    "CHARGING":   "Charging",
-    "SCHEDULED":  "Scheduled",
-    "SLEEPING":   "Sleeping",
-    "UPDATING":   "Updating",
-    "ERROR":      "Error",
-    "LOCKED":     "Locked",
-    1: "Mowing",             2: "Returning",
-    3: "Paused",             4: "Error",
-    5: "Sleeping/Charging",  6: "Locked",
-    7: "Border mowing",      8: "Scheduled",
+    "PAUSE": "Paused",
+    "IDLE": "Ready",
+    "CHARGING": "Charging",
+    "SCHEDULED": "Scheduled",
+    "SLEEPING": "Sleeping",
+    "UPDATING": "Updating",
+    "ERROR": "Error",
+    "LOCKED": "Locked",
+    1: "Mowing",
+    2: "Returning",
+    3: "Paused",
+    4: "Error",
+    5: "Sleeping/Charging",
+    6: "Locked",
+    7: "Border mowing",
+    8: "Scheduled",
     0: "Unknown",
 }
 
@@ -161,11 +169,10 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
     _attr_has_entity_name = True
     _attr_name = None  # Name comes from the device
-    # No PAUSE: the public STIGA API has no pause command – endsession sends
-    # the robot back to the dock, which is the same as DOCK.
     _attr_supported_features = (
         LawnMowerEntityFeature.START_MOWING
         | LawnMowerEntityFeature.DOCK
+        | LawnMowerEntityFeature.PAUSE
     )
 
     def __init__(
@@ -174,7 +181,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         device: dict,
     ) -> None:
         super().__init__(coordinator)
-        self._uuid     = _dev_uuid(device)
+        self._uuid = _dev_uuid(device)
         self._attr_unique_id = f"stiga_{self._uuid}"
 
     # ------------------------------------------------------------------ Device
@@ -251,7 +258,8 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             if mode_key not in _AMBIGUOUS_MODES:
                 _LOGGER.warning(
                     "Unknown mowingMode %r / currentAction %r – please report as a GitHub issue",
-                    mode, action,
+                    mode,
+                    action,
                 )
 
         # No currentAction, no confirming isDocked, and mowingMode is either
@@ -273,16 +281,17 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         action = s.get("current_action")
         entry = _CURRENT_ACTION.get(action.upper()) if isinstance(action, str) else None
         label = (
-            entry[1] if entry is not None
+            entry[1]
+            if entry is not None
             else MOWING_MODE_LABELS.get(mode, str(mode) if mode else "—")
         )
         attrs: dict[str, Any] = {
-            ATTR_MOWING_MODE_RAW:    mode,
-            "current_action_raw":    action,
-            "mowing_mode_label":     label,
-            ATTR_SERIAL_NUMBER:      a.get("serial_number", ""),
-            ATTR_PRODUCT_CODE:       a.get("product_code", ""),
-            ATTR_DEVICE_TYPE:        a.get("device_type", ""),
+            ATTR_MOWING_MODE_RAW: mode,
+            "current_action_raw": action,
+            "mowing_mode_label": label,
+            ATTR_SERIAL_NUMBER: a.get("serial_number", ""),
+            ATTR_PRODUCT_CODE: a.get("product_code", ""),
+            ATTR_DEVICE_TYPE: a.get("device_type", ""),
         }
 
         if (ec := s.get("error_code")) is not None:
@@ -317,6 +326,10 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
     # ------------------------------------------------------------------ Commands
 
+    def _mac(self) -> str | None:
+        """MAC address for MQTT dispatch, or None when MQTT is unavailable."""
+        return self._device_attrs().get("mac_address")
+
     async def async_start_mowing(self) -> None:
         """Start a mowing session."""
         try:
@@ -325,8 +338,39 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         except Exception as err:
             raise HomeAssistantError(f"Could not start mowing: {err}") from err
 
+    async def async_pause(self) -> None:
+        """Pause the mower in place via MQTT STOP=0.
+
+        The REST endsession always sends the robot home, which is not a true
+        pause. MQTT cmd 0 (STOP) halts it in place — only available when MQTT
+        is connected.
+        """
+        mqtt = self.coordinator.mqtt
+        mac = self._mac()
+        if mqtt is not None and mac is not None and mqtt.connected:
+            try:
+                await mqtt.cmd_stop(mac)
+                return
+            except Exception as err:
+                raise HomeAssistantError(f"Could not pause mower: {err}") from err
+        # MQTT not available — stop via REST (sends home, best we can do).
+        try:
+            await self.coordinator.api.stop_mowing(self._uuid)
+            await self.coordinator.async_request_refresh()
+        except Exception as err:
+            raise HomeAssistantError(f"Could not pause mower: {err}") from err
+
     async def async_dock(self) -> None:
         """Send the robot back to the charging dock."""
+        mqtt = self.coordinator.mqtt
+        mac = self._mac()
+        if mqtt is not None and mac is not None and mqtt.connected:
+            try:
+                await mqtt.cmd_go_home(mac)
+                return
+            except Exception as err:
+                raise HomeAssistantError(f"Could not send dock command: {err}") from err
+        # Fallback to REST endsession.
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()

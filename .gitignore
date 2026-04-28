@@ -1,6 +1,7 @@
 stiga_mower_status.py
 login.secret
 *.secret
+capture_schedule.py
 
 # Internal endpoint reference (contains undocumented API details and example
 # responses with personal UUIDs/MAC addresses) — do not publish.
@@ -10,3 +11,15 @@ API_INTERNAL.md
 __pycache__/
 *.pyc
 *.pyo
+
+# Local virtualenvs and tooling caches
+.venv/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+*.egg-info/
+
+# Claude Code local settings (per-developer)
+.claude/settings.local.json

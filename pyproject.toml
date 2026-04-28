@@ -1,0 +1,49 @@
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = [
+    "error::DeprecationWarning",
+    # pytest-homeassistant-custom-component sometimes triggers these from
+    # transitive deps; relax until upstream catches up.
+    "default::DeprecationWarning:homeassistant.*",
+    "default::DeprecationWarning:aiohttp.*",
+]
+
+[tool.coverage.run]
+source = ["custom_components/stiga_mower"]
+omit = ["custom_components/stiga_mower/certs/*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+    "N",    # pep8-naming
+]
+ignore = [
+    "E501",  # line length, prefer Black-style soft enforcement
+    # We intentionally use real Unicode dashes/multiplications in docstrings
+    # and comments; the German memos/notes don't transliterate well to ASCII.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["N802", "N806"]  # test naming flexibility

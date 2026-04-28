@@ -1,61 +1,130 @@
 # STIGA Lawn Mower – Home Assistant Integration
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
-[![HA Version](https://img.shields.io/badge/Home%20Assistant-2023.9%2B-blue)](https://www.home-assistant.io/)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.4%2B-blue)](https://www.home-assistant.io/)
 
-Direct cloud integration for STIGA robotic lawn mowers (A-Series / Vista models) without any MQTT detour.  
-Communicates directly with the official [**STIGA Integration REST API**](https://www.stiga.com/int/stiga-integration-api).
+Native Home Assistant integration for STIGA robotic lawn mowers (Vista / A-Series models).  
+Combines the official [**STIGA Integration REST API**](https://www.stiga.com/int/stiga-integration-api) with direct MQTT cloud communication for live status, real-time position tracking, and full schedule management.
+
+---
+
+## Architecture
+
+```
+┌──────────────────┐    REST (every 6 h)   ┌──────────────────────┐
+│  STIGA REST API  │ ────────────────────▶ │     Coordinator      │
+│  - Auth/Refresh  │                       │  push-driven via     │
+│  - /garage       │ ◀──── Discovery ───── │  async_set_updated_  │
+│  - /perimeters   │                       │  data() per frame    │
+└──────────────────┘                       └──────────────────────┘
+                                                      ▲
+┌──────────────────┐  Live status / cmds              │
+│  STIGA MQTT      │ ────────────────────────────────▶│
+│  (aiomqtt+mTLS)  │                                  │
+│  cloud_push      │ ◀─── Commands ───────────────────│
+└──────────────────┘                         HA Entity Layer
+```
+
+- **REST** handles device discovery, garden perimeter, and notification polling.
+- **MQTT** delivers live status frames (activity, battery, GPS, sensors) and accepts commands (start, pause, dock, settings, schedule updates) with minimal latency.
+- The coordinator is **push-driven**: MQTT frames trigger `async_set_updated_data` immediately; the 30-second REST poll acts as a liveness check only.
 
 ---
 
 ## Supported Models
 
-All STIGA robots that can be controlled via the **STIGA.GO app**:
+All STIGA robots controllable via the **STIGA.GO app**:
 
-- Vista models: A 6v, A 8v, A 10v, A 15v, ...
-- A-Series: A 1500, A 3000, ...
+- Vista models: A 6v, A 8v, A 10v, A 15v, …
+- A-Series: A 1500, A 3000, …
 
 ---
 
 ## Features
 
-### LawnMower Entity
-| Feature | Description |
+### Lawn Mower Entity
+| Feature | Notes |
 |---|---|
 | **Start mowing** | `lawn_mower.start_mowing` |
+| **Pause** | Real stop-in-place via MQTT (not dock) |
 | **Return to dock** | `lawn_mower.dock` |
-| **State** | `mowing`, `docked`, `paused`, `error` |
-| **Battery level** | Directly on the entity |
+| **States** | `mowing`, `docked`, `paused`, `returning`, `error` |
+| **Battery level** | Shown directly on the entity card |
 
-### Additional Sensor Entities per Robot
-| Sensor | Unit |
+### Sensor Entities
+| Sensor | Unit | Category |
+|---|---|---|
+| Battery level | % | — |
+| Remaining capacity | mAh | diagnostic |
+| Battery capacity | mAh | diagnostic |
+| Battery health | % | diagnostic |
+| Charge cycles | — | diagnostic |
+| Cutting height | mm | diagnostic |
+| Total work time | — | diagnostic |
+| Current zone | — | — |
+| Zone progress | % | — |
+| Garden progress | % | — |
+| Garden area | m² | diagnostic |
+| Zones | count | diagnostic |
+| Obstacles | count | diagnostic |
+| Obstacle area | m² | diagnostic |
+| GPS satellites | — | diagnostic |
+| RTK quality | % | diagnostic |
+| GPS quality | — | diagnostic |
+| RSSI | dBm | diagnostic |
+| RSRP | dBm | diagnostic |
+| RSRQ | dB | diagnostic |
+| Signal quality | % | diagnostic |
+
+### Binary Sensor Entities
+| Sensor | Notes |
 |---|---|
-| Battery level | % |
-| Battery voltage | V |
-| Power consumption | W |
-| Charging current | A |
-| Remaining runtime | min |
-| Charge cycles | — |
-| Battery health | % |
-| Remaining capacity | mAh |
-| Total capacity | mAh |
-| Cutting height | mm (diagnostic, read-only) |
-| Total work time | (diagnostic) |
-| Garden area | m² (diagnostic, refreshed every 6h) |
-| Zones | count (diagnostic, refreshed every 6h) |
-| Obstacles | count (diagnostic, refreshed every 6h) |
-| Obstacle area | m² (diagnostic, refreshed every 6h) |
+| Cloud connection | MQTT link to the STIGA cloud |
+| Rain sensor | Current rain detection state |
+| Lift sensor | Mower lifted off the ground |
+| Bump sensor | Collision detected |
+| Slope sensor | Slope too steep |
+| Lid | Lid open/closed |
+| Docked | Robot at charging station |
+| Charging | Battery currently charging |
+| Error | Active error condition |
 
-### LawnMower Entity Attributes
-- `mowing_mode_raw` – Raw API value (`SCHEDULED`, `WORKING`, …)
-- `mowing_mode_label` – Human-readable status
-- `serial_number`, `product_code`, `device_type`
-- `last_used`, `total_work_time`, `base_uuid`, `lte_version`, `rain_sensor`, `schedule_enabled`
-- All battery detail values
+### Number Entity
+| Entity | Range | Step |
+|---|---|---|
+| Cutting height | 20–60 mm | 5 mm |
 
-### Device Registry
-- Firmware version (`sw_version`) and MAC address are reported when the cloud
-  exposes them via `/api/garage`
+### Switch Entities (Configuration)
+| Switch | Notes |
+|---|---|
+| Rain sensor | Enable/disable rain detection |
+| Anti-theft | PIN protection |
+| Keyboard lock | Lock physical buttons |
+| Push notifications | App notifications |
+| Obstacle notifications | Notify on obstacle detection |
+| Smart cutting height | Automatic height adjustment |
+| Long exit | Extended exit from charging station |
+
+### Select Entities (Configuration)
+| Select | Options |
+|---|---|
+| Cutting mode | Dense Grid, Chess Board, North-South, East-West |
+| Rain delay | 4 h, 8 h, 12 h |
+
+### Calendar Entity
+- **Mowing Schedule** — reads the live weekly mowing schedule from the robot and displays each active time window as a recurring Home Assistant calendar event (RRULE `FREQ=WEEKLY`)
+- Create new mowing windows directly from the HA calendar UI
+- Delete existing windows — changes are written back to the robot via MQTT within seconds
+- Schedule granularity: **30 minutes** (hardware constraint)
+
+### Device Tracker
+- **Live GPS position** — updated from MQTT on every status frame; shown on the HA map card
+
+### Button Entities (Diagnostic / Configuration)
+| Button | Notes |
+|---|---|
+| Calibrate blades | Trigger blade calibration routine |
+| Refresh status | Request an immediate status update from the robot |
 
 ---
 
@@ -71,7 +140,7 @@ All STIGA robots that can be controlled via the **STIGA.GO app**:
 
 ### Manual
 
-1. Copy the `custom_components/stiga_lawn_mower_hacs/` folder into your  
+1. Copy the `custom_components/stiga_mower/` folder into your  
    `<config>/custom_components/` directory
 2. Restart Home Assistant
 
@@ -79,19 +148,19 @@ All STIGA robots that can be controlled via the **STIGA.GO app**:
 
 ## Setup
 
-1. **Settings** → **Devices & Services** → **Add Integration**
+1. Go to **Settings → Devices & Services → Add Integration**
 2. Search for **STIGA Lawn Mower**
 3. Enter the e-mail and password of your **STIGA.GO app** account
-4. Done – all linked robots will be detected automatically
+4. Done – all linked robots are detected automatically and MQTT starts immediately
 
 ---
 
 ## Automation Examples
 
 ```yaml
-# Start mowing at 9:00 AM (weekdays only, when battery > 50%)
+# Start mowing at 9:00 on weekdays when battery > 50 %
 automation:
-  - alias: "mower start in the morning"
+  - alias: "Mower – start in the morning"
     trigger:
       - platform: time
         at: "09:00:00"
@@ -106,13 +175,13 @@ automation:
         target:
           entity_id: lawn_mower.mower
 
-# Send robot to dock when it rains
+# Dock when rain sensor triggers (binary sensor driven by MQTT)
 automation:
-  - alias: "mower dock on rain"
+  - alias: "Mower – dock on rain"
     trigger:
       - platform: state
-        entity_id: weather.home
-        to: "rainy"
+        entity_id: binary_sensor.mower_rain_sensor
+        to: "on"
     action:
       - service: lawn_mower.dock
         target:
@@ -123,20 +192,26 @@ automation:
 
 ## Technical Details
 
-- **API host**: `connectivity-production.stiga.com`
-- **Authentication**: Firebase Bearer Token (identical to the STIGA.GO app)
-- **Polling interval**: 30 seconds
-- **Platforms**: `lawn_mower`, `sensor`
-- **Minimum HA version**: 2023.9.0 (lawn_mower entity introduced)
+| Property | Value |
+|---|---|
+| API host | `connectivity-production.stiga.com` |
+| MQTT broker | `broker.connectivity-production.stiga.com` (port 8883, mTLS) |
+| Authentication | Firebase Bearer Token (same as STIGA.GO app) |
+| Token refresh | Every 50 min (token TTL 60 min) |
+| REST polling | Every 30 s (liveness) + every 6 h (full refresh) |
+| MQTT | Push-driven, reconnects automatically |
+| Platforms | `lawn_mower`, `sensor`, `binary_sensor`, `number`, `switch`, `select`, `calendar`, `device_tracker`, `button` |
+| Minimum HA version | 2024.4.0 |
+
+### Schedule Wire Format
+
+STIGA Vista / A15v robots encode their weekly schedule as **7 × 6 varint values** (42 logical values) inside a protobuf field. Each varint value is a bitmask covering 8 × 30-minute slots; together the 6 values per day cover all 48 half-hours from 00:00 to 23:30.
+
+Classic A-Series robots (as documented by [matthewgream/stiga-api](https://github.com/matthewgream/stiga-api)) use 42 raw bytes with the same bitmask layout. The decoder handles both formats transparently: values ≤ 127 are single-byte varints, identical to the raw-byte format.
 
 ---
 
 ## Known Limitations
 
-- **No pause command.** The public STIGA Integration REST API only exposes
-  `startsession` and `endsession` (= return to dock). A real "stop in place"
-  command exists in the underlying MQTT protocol but is not part of the
-  documented REST API, so this integration does not advertise pause.
-- Zone control (mowing specific zones 1–10) is not directly possible via  
-  the standard `lawn_mower.start_mowing` service –  
-  use the script approach with the Python tool for that.
+- **Zone selection** — `lawn_mower.start_mowing` always starts the full garden. Mowing specific zones requires direct MQTT command construction (not exposed as a HA service yet).
+- **Base station** — live status of the RTK base station is received but not yet exposed as HA entities.

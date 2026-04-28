@@ -57,16 +57,78 @@
   },
   "entity": {
     "sensor": {
-      "battery_cycles":    { "name": "Ladezyklen" },
-      "battery_health":    { "name": "Batteriezustand" },
-      "battery_capacity":  { "name": "Batteriekapazität" },
-      "battery_remaining": { "name": "Verbleibende Kapazität" },
-      "cutting_height":    { "name": "Schnitthöhe" },
-      "total_work_time":   { "name": "Gesamtarbeitszeit" },
-      "garden_area":       { "name": "Gartenfläche" },
-      "zone_count":        { "name": "Zonen" },
-      "obstacle_count":    { "name": "Hindernisse" },
-      "obstacle_area":     { "name": "Hindernisfläche" }
+      "battery_cycles":      { "name": "Ladezyklen" },
+      "battery_health":      { "name": "Batteriezustand" },
+      "battery_capacity":    { "name": "Batteriekapazität" },
+      "battery_remaining":   { "name": "Verbleibende Kapazität" },
+      "cutting_height":      { "name": "Schnitthöhe" },
+      "total_work_time":     { "name": "Gesamtarbeitszeit" },
+      "garden_area":         { "name": "Gartenfläche" },
+      "zone_count":          { "name": "Zonen" },
+      "obstacle_count":      { "name": "Hindernisse" },
+      "obstacle_area":       { "name": "Hindernisfläche" },
+      "current_zone":        { "name": "Aktuelle Zone" },
+      "zone_completed_pct":  { "name": "Zonenfortschritt" },
+      "garden_completed_pct":{ "name": "Gartenfortschritt" },
+      "satellites":          { "name": "GPS-Satelliten" },
+      "rtk_quality_pct":     { "name": "RTK-Qualität" },
+      "gps_quality":         { "name": "GPS-Qualität" },
+      "rssi":                { "name": "RSSI" },
+      "rsrp":                { "name": "RSRP" },
+      "rsrq":                { "name": "RSRQ" },
+      "signal_quality_pct":  { "name": "Signalqualität" }
+    },
+    "binary_sensor": {
+      "mqtt_connected":  { "name": "Cloud-Verbindung" },
+      "rain_sensor":     { "name": "Regensensor" },
+      "lift_sensor":     { "name": "Aufhebesensor" },
+      "bump_sensor":     { "name": "Stoßsensor" },
+      "slope_sensor":    { "name": "Neigungssensor" },
+      "lid_sensor":      { "name": "Deckel" },
+      "is_docked":       { "name": "Angedockt" },
+      "battery_charging":{ "name": "Lädt" },
+      "error_active":    { "name": "Fehler" }
+    },
+    "device_tracker": {
+      "position": { "name": "Position" }
+    },
+    "number": {
+      "cutting_height": { "name": "Schnitthöhe" }
+    },
+    "switch": {
+      "rain_sensor_enabled":    { "name": "Regensensor" },
+      "anti_theft":             { "name": "Diebstahlschutz" },
+      "keyboard_lock":          { "name": "Tastensperre" },
+      "push_notifications":     { "name": "Push-Benachrichtigungen" },
+      "obstacle_notifications": { "name": "Hindernis-Benachrichtigungen" },
+      "smart_cutting_height":   { "name": "Smarte Schnitthöhe" },
+      "long_exit":              { "name": "Langer Ausgang" }
+    },
+    "select": {
+      "cutting_mode": {
+        "name": "Schnittmuster",
+        "state": {
+          "denseGrid":  "Dichtes Raster",
+          "chessBoard": "Schachbrett",
+          "northSouth": "Nord-Süd",
+          "eastWest":   "Ost-West"
+        }
+      },
+      "rain_sensor_delay": {
+        "name": "Regenverzögerung",
+        "state": {
+          "4":  "4 Stunden",
+          "8":  "8 Stunden",
+          "12": "12 Stunden"
+        }
+      }
+    },
+    "button": {
+      "calibrate_blades": { "name": "Messer kalibrieren" },
+      "refresh_status":   { "name": "Status aktualisieren" }
+    },
+    "calendar": {
+      "mowing_schedule": { "name": "Mähplan" }
     }
   }
 }

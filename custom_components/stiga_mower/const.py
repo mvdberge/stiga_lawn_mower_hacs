@@ -2,14 +2,14 @@
 
 DOMAIN = "stiga_mower"
 
-CONF_EMAIL    = "email"
+CONF_EMAIL = "email"
 CONF_PASSWORD = "password"
 
-UPDATE_INTERVAL  = 30  # seconds
-REQUEST_TIMEOUT  = 10  # seconds per HTTP request
+UPDATE_INTERVAL = 30  # seconds
+REQUEST_TIMEOUT = 10  # seconds per HTTP request
 
 # Firebase Auth (publicly embedded in STIGA app code)
-FIREBASE_API_KEY  = "AIzaSyCPtRBU_hwWZYsguHp9ucGrfNac0kXR6ug"
+FIREBASE_API_KEY = "AIzaSyCPtRBU_hwWZYsguHp9ucGrfNac0kXR6ug"
 FIREBASE_AUTH_URL = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword"
 
 # STIGA Cloud API
@@ -20,42 +20,42 @@ STIGA_BASE_URL = "https://connectivity-production.stiga.com/api"
 # but is not part of the published Integration API. We try it first and fall
 # back to the documented endpoint if the cloud ever stops returning it.
 EP_GARAGE_FULL = "/garage"
-EP_GARAGE      = "/garage/integration"
-EP_STATUS      = "/devices/{uuid}/mqttstatus"
-EP_START       = "/devices/{uuid}/command/startsession"
-EP_STOP        = "/devices/{uuid}/command/endsession"
+EP_GARAGE = "/garage/integration"
+EP_STATUS = "/devices/{uuid}/mqttstatus"
+EP_START = "/devices/{uuid}/command/startsession"
+EP_STOP = "/devices/{uuid}/command/endsession"
 # Undocumented endpoints — fetched once at setup. If the cloud removes them
 # the integration still works, but the perimeter sensors and the friendly
 # model name will be unavailable. See API_INTERNAL.md for response shapes.
-EP_DEVICE      = "/devices/{uuid}"
-EP_PERIMETER   = "/perimeters?device_uuid={uuid}&base_uuid={base_uuid}"
+EP_DEVICE = "/devices/{uuid}"
+EP_PERIMETER = "/perimeters?device_uuid={uuid}&base_uuid={base_uuid}"
 
 # Device attributes (from official API documentation)
-ATTR_SERIAL_NUMBER   = "serial_number"
-ATTR_PRODUCT_CODE    = "product_code"
-ATTR_DEVICE_TYPE     = "device_type"
+ATTR_SERIAL_NUMBER = "serial_number"
+ATTR_PRODUCT_CODE = "product_code"
+ATTR_DEVICE_TYPE = "device_type"
 ATTR_MOWING_MODE_RAW = "mowing_mode_raw"
 ATTR_BATTERY_VOLTAGE = "battery_voltage_v"
-ATTR_BATTERY_CAPACITY    = "battery_capacity_mah"
-ATTR_BATTERY_REMAINING   = "battery_remaining_mah"
-ATTR_BATTERY_CYCLES      = "battery_cycles"
-ATTR_BATTERY_POWER       = "battery_power_w"
-ATTR_BATTERY_HEALTH      = "battery_health_pct"
-ATTR_BATTERY_TIME_LEFT   = "battery_time_left_min"
-ATTR_BATTERY_CURRENT     = "battery_current_a"
-ATTR_ERROR_CODE          = "error_code"
-ATTR_ERROR_DESCRIPTION   = "error_description"
-ATTR_LAST_USED           = "last_used"
-ATTR_LTE_VERSION         = "lte_version"
-ATTR_TOTAL_WORK_TIME     = "total_work_time"
-ATTR_CUTTING_HEIGHT      = "cutting_height_mm"
-ATTR_RAIN_SENSOR         = "rain_sensor"
-ATTR_BASE_UUID           = "base_uuid"
+ATTR_BATTERY_CAPACITY = "battery_capacity_mah"
+ATTR_BATTERY_REMAINING = "battery_remaining_mah"
+ATTR_BATTERY_CYCLES = "battery_cycles"
+ATTR_BATTERY_POWER = "battery_power_w"
+ATTR_BATTERY_HEALTH = "battery_health_pct"
+ATTR_BATTERY_TIME_LEFT = "battery_time_left_min"
+ATTR_BATTERY_CURRENT = "battery_current_a"
+ATTR_ERROR_CODE = "error_code"
+ATTR_ERROR_DESCRIPTION = "error_description"
+ATTR_LAST_USED = "last_used"
+ATTR_LTE_VERSION = "lte_version"
+ATTR_TOTAL_WORK_TIME = "total_work_time"
+ATTR_CUTTING_HEIGHT = "cutting_height_mm"
+ATTR_RAIN_SENSOR = "rain_sensor"
+ATTR_BASE_UUID = "base_uuid"
 ATTR_WORKING_DAYTIMES_ON = "schedule_enabled"
-ATTR_GARDEN_AREA         = "garden_area_m2"
-ATTR_ZONE_COUNT          = "zone_count"
-ATTR_OBSTACLE_COUNT      = "obstacle_count"
-ATTR_OBSTACLE_AREA       = "obstacle_area_m2"
+ATTR_GARDEN_AREA = "garden_area_m2"
+ATTR_ZONE_COUNT = "zone_count"
+ATTR_OBSTACLE_COUNT = "obstacle_count"
+ATTR_OBSTACLE_AREA = "obstacle_area_m2"
 
 # Error / status info codes. Cross-checked against
 # https://github.com/matthewgream/stiga-api (ROBOT_STATUS_INFO_CODES).

@@ -1,0 +1,33 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements_test.txt
+          pip install homeassistant aiomqtt
+      - name: Run tests
+        run: pytest --cov=custom_components/stiga_mower --cov-report=xml -q
+      - uses: codecov/codecov-action@v5
+        if: always()
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false

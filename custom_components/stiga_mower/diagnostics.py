@@ -42,10 +42,11 @@ async def async_get_config_entry_diagnostics(
             "update_interval": str(coordinator.update_interval),
         },
         "devices": _redact_devices(data.get("devices", [])),
-        "statuses": {
-            "**REDACTED**": status
-            for status in data.get("statuses", {}).values()
-        },
+        # Drop the UUID keys (PII) but keep every device's status dict.
+        # The previous {"**REDACTED**": status for ...} comprehension
+        # collapsed to a single entry — keeping a list preserves the
+        # full picture without leaking identifiers.
+        "statuses": list(data.get("statuses", {}).values()),
     }
 
 

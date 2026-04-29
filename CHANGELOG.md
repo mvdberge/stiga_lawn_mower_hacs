@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.0.4] - 2026-04-29
+
+### Fixed
+
+**Network signal sensors now show correct negative dBm/dB values**
+- RSSI, RSRP, and RSRQ are LTE signal-strength metrics stored as signed 32-bit integers in the protobuf wire format. The codec was returning them as raw unsigned varints (e.g. RSRP −93 dBm appeared as 4,294,967,203 dBm).
+- Signal quality (%) was affected by the same issue.
+- **Fix**: Added `_as_signed_int32` helper (mirrors matthewgream's `toInt32`) and applied it to all four network sub-frame fields (`rssi`, `rsrp`, `signal_quality_pct`, `rsrq`) in `decode_status()`.
+- **Result**: Network signal sensors now display sensible negative dBm/dB values (e.g. RSRP −93 dBm).
+
+---
+
 ## [2.0.3] - 2026-04-29
 
 ### Fixed

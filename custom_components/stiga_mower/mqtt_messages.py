@@ -87,10 +87,10 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         _set_if_present(out, "network_kind", sub, 4)
         _set_if_present(out, "network_type", sub, 5)
         _set_if_present(out, "network_band", sub, 6)
-        _set_if_present(out, "rssi", sub, 7)
-        _set_if_present(out, "rsrp", sub, 10)
-        _set_if_present(out, "signal_quality_pct", sub, 11)
-        _set_if_present(out, "rsrq", sub, 12)
+        _set_if_present(out, "rssi", sub, 7, _as_signed_int32)
+        _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
+        _set_if_present(out, "signal_quality_pct", sub, 11, _as_signed_int32)
+        _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
 
     return out
 
@@ -505,3 +505,15 @@ def _set_if_present(
 
 def _as_bool(value: Any) -> bool:
     return bool(value)
+
+
+def _as_signed_int32(value: int) -> int:
+    """Reinterpret a raw protobuf VARINT as a signed 32-bit integer.
+
+    Protobuf encodes negative int32 fields as large uint32 values
+    (e.g. -93 → 4,294,967,203).  Mirrors matthewgream's `toInt32`.
+    """
+    value &= 0xFFFFFFFF
+    if value >= 0x80000000:
+        value -= 0x100000000
+    return value

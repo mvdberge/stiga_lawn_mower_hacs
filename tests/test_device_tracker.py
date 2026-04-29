@@ -73,11 +73,13 @@ def _make_tracker(hass, *, base_lat=None, base_lon=None, position_frame=None):
             },
         }
     ]
-    c.async_set_updated_data(c._build_data(rest_statuses={"u1": {"has_data": True}}))
-
+    # GPS offsets come from the MQTT STATUS frame, which is merged into
+    # statuses[uuid] via _MQTT_PASSTHROUGH_FIELDS.  Inject them directly
+    # into rest_statuses so _gps_offsets() can find them.
+    status: dict = {"has_data": True}
     if position_frame is not None:
-        c._live_position["MAC1"] = position_frame
-        c.async_set_updated_data(c._build_data())
+        status.update(position_frame)
+    c.async_set_updated_data(c._build_data(rest_statuses={"u1": status}))
 
     device = c.data["devices"][0]
     tracker = StigaPositionTracker(c, device)

@@ -125,9 +125,10 @@ def test_error_active_false_when_zero(hass) -> None:
 
 
 def test_error_active_false_when_none(hass) -> None:
+    # Absent error_code means no fault — expect False, not None.
     c = _make_coordinator(hass, statuses={"has_data": True})
     s = _sensor(c, "error_active")
-    assert s.is_on is None
+    assert s.is_on is False
 
 
 # ------------------------------------------------------------------ info_sensor sensors

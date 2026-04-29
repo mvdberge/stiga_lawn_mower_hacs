@@ -4,17 +4,23 @@
 
 ### Fixed
 
+**MQTT data not flowing to sensors (critical fix)**
+- **Root cause**: Integration was connecting to MQTT but **not requesting status from the robots**. MQTT is push-based, but STIGA robots do not emit status frames unless explicitly requested via the `STATUS_REQUEST` command.
+- **Fix**: After MQTT subscriptions are established, the integration now sends `request_status()` commands to all connected robots, triggering the first batch of live sensor data. Subsequent status frames flow continuously as robots report their state.
+- **Result**: MQTT sensors (zone progress, garden progress, GPS quality, satellites, etc.) now populate within seconds of MQTT connection.
+
 **MQTT sensor availability**
-- MQTT-only sensors (current zone, zone progress, garden progress, GPS quality, satellites, signal strength) now correctly show as **unavailable** when MQTT data is absent, instead of remaining **unknown** when the connection briefly disconnects. Sensors only become available once the first MQTT frame arrives with the expected data fields.
+- MQTT-only sensors now correctly show as **unavailable** when MQTT data is absent, instead of remaining **unknown**. Sensors only become available once the first MQTT frame arrives with the expected data fields.
 - REST sensors (battery level, cutting height, work time) remain unaffected and continue to display REST data even without MQTT.
 
 **MQTT connection error reporting**
-- MQTT startup failures are now reported via Home Assistant's issue registry, surfacing a clear warning message to the user instead of silently falling back to REST-only mode. Users can now diagnose connection issues (network, firewall, invalid token) directly from the UI.
-- Improved logging: MQTT errors now log at `ERROR` level with detailed context, making server logs easier to search.
+- MQTT startup failures are now reported via Home Assistant's issue registry, surfacing a clear warning message instead of silently falling back to REST-only mode.
+- Improved logging: MQTT errors now log at `ERROR` level with detailed context; successful status requests are logged at `DEBUG` level for diagnostics.
 
 ### Technical notes
-- Added `_MQTT_ONLY_SENSOR_KEYS` constant to explicitly list sensors that require MQTT data, preventing maintenance confusion when new MQTT sensors are added.
-- Sensor availability logic now distinguishes between MQTT-only fields and REST-provided fields at the `available` property level, preventing false "available" states when MQTT is down.
+- Added `_MQTT_ONLY_SENSOR_KEYS` constant to explicitly list sensors that require MQTT data.
+- Sensor availability logic now distinguishes between MQTT-only fields and REST-provided fields at the `available` property level.
+- Added debug logging in `_on_mqtt_status` and `_dispatch_robot_log` to help diagnose future MQTT issues.
 
 ---
 

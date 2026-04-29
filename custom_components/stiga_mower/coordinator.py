@@ -106,6 +106,10 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         )
 
     def _on_mqtt_status(self, mac: str, data: dict[str, Any]) -> None:
+        if not data:
+            _LOGGER.debug("MQTT STATUS frame for %s decoded to empty dict (protobuf issue?)", mac)
+        else:
+            _LOGGER.debug("MQTT STATUS for %s: %s", mac, list(data.keys()))
         self._live_status[mac] = data
         self._publish_update()
 

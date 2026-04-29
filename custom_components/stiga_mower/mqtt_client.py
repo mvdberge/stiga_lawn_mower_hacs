@@ -205,6 +205,14 @@ class StigaMQTT:
                     await client.subscribe(topic, qos=0)
                     _LOGGER.debug("Subscribed: %s", topic)
 
+                # Request initial status from all robots so we populate live data
+                for mac in self._robots:
+                    try:
+                        await self.request_status(mac)
+                        _LOGGER.debug("Requested initial status from robot %s", mac)
+                    except Exception as err:
+                        _LOGGER.warning("Failed to request status from %s: %s", mac, err)
+
                 # Race the message consumer against the refresh timer.
                 # On timeout we cleanly close the session so the outer loop
                 # reconnects with a fresh Firebase token.
@@ -276,6 +284,8 @@ class StigaMQTT:
 
     def _dispatch_robot_log(self, mac: str, kind: str, payload: bytes) -> None:
         if kind == mc.ROBOT_LOG_STATUS:
+            if not self._robots.get(mac):
+                _LOGGER.warning("STATUS frame for unregistered robot MAC %s — check _build_mqtt()", mac)
             self._fire(self._on_status, mac, mm.decode_status(payload))
         elif kind == mc.ROBOT_LOG_POSITION:
             self._fire(self._on_position, mac, mm.decode_position(payload))

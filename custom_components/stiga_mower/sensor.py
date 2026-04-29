@@ -35,18 +35,20 @@ from .coordinator import StigaDataUpdateCoordinator
 PARALLEL_UPDATES = 1
 
 # MQTT-only sensors that require a live connection to be available
-_MQTT_ONLY_SENSOR_KEYS = frozenset((
-    "current_zone",
-    "zone_completed_pct",
-    "garden_completed_pct",
-    "satellites",
-    "rtk_quality_pct",
-    "gps_quality",
-    "rssi",
-    "rsrp",
-    "rsrq",
-    "signal_quality_pct",
-))
+_MQTT_ONLY_SENSOR_KEYS = frozenset(
+    (
+        "current_zone",
+        "zone_completed_pct",
+        "garden_completed_pct",
+        "satellites",
+        "rtk_quality_pct",
+        "gps_quality",
+        "rssi",
+        "rsrp",
+        "rsrq",
+        "signal_quality_pct",
+    )
+)
 
 
 @dataclass(frozen=True, kw_only=True)

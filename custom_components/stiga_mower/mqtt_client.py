@@ -323,7 +323,9 @@ class StigaMQTT:
     def _dispatch_robot_log(self, mac: str, kind: str, payload: bytes) -> None:
         if kind == mc.ROBOT_LOG_STATUS:
             if not self._robots.get(mac):
-                _LOGGER.warning("STATUS frame for unregistered robot MAC %s — check _build_mqtt()", mac)
+                _LOGGER.warning(
+                    "STATUS frame for unregistered robot MAC %s — check _build_mqtt()", mac
+                )
             self._fire(self._on_status, mac, mm.decode_status(payload))
         elif kind == mc.ROBOT_LOG_POSITION:
             self._fire(self._on_position, mac, mm.decode_position(payload))

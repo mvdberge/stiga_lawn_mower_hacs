@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.0.2] - 2026-04-29
+
+### Fixed
+
+**MQTT sensors now receive live data**
+- Integration now automatically requests status from robots after establishing MQTT connection. Previously, robots were subscribed to but never asked to send status frames, resulting in all MQTT sensors showing "unavailable".
+- Status requests are sent once at connection time and robots continuously stream updates thereafter.
+
+---
+
 ## [2.0.1] - 2026-04-29
 
 ### Fixed

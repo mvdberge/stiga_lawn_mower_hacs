@@ -33,6 +33,10 @@ MQTT_KEEPALIVE = 60  # seconds
 MQTT_RECONNECT_DELAY = 5  # seconds, matches matthewgream's reconnectPeriod
 MQTT_TOKEN_REFRESH_INTERVAL = 50 * 60  # refresh Firebase id_token before 1h expiry
 
+# STIGA robots do not push status frames spontaneously — they must be polled.
+# matthewgream uses 30s for both docked and undocked states; we mirror that.
+MQTT_STATUS_POLL_INTERVAL = 30  # seconds
+
 # ---------------------------------------------------------------- Robot topics
 
 # Subscribed by the client (handler dispatches by suffix).

@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.3] - 2026-04-29
+
+### Fixed
+
+**MQTT status polling — sensors now receive continuous updates**
+- **Root cause**: STIGA robots do not push status frames spontaneously; they must be **polled continuously**. v2.0.2 sent a single STATUS_REQUEST at connection time, but the robot only responded once and then went silent, leaving sensors empty after the first frame (or unavailable if reconnects happened in between).
+- **Fix**: Added a background polling task that sends STATUS_REQUEST every 30 seconds for the duration of each MQTT session, matching matthewgream/stiga-api's reference implementation (`timing_levels: status:30s`).
+- **Result**: MQTT sensors (zone progress, garden progress, GPS quality, satellites, signal strength, etc.) now update every 30 seconds while MQTT is connected.
+
+### Technical notes
+- New constant `MQTT_STATUS_POLL_INTERVAL = 30` (seconds) in `mqtt_constants.py`.
+- New methods `_poll_loop()` and `_poll_all_robots()` in `mqtt_client.py`. The poll task is started after subscriptions are established and cleanly cancelled when the MQTT session ends or reconnects.
+
+---
+
 ## [2.0.2] - 2026-04-29
 
 ### Fixed

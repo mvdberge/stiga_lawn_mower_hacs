@@ -200,18 +200,18 @@ class StigaMQTT:
         ) as client:
             self._client = client
             self._set_connected(True)
+            poll_task: asyncio.Task[None] | None = None
             try:
                 for topic in self._subscriptions():
                     await client.subscribe(topic, qos=0)
                     _LOGGER.debug("Subscribed: %s", topic)
 
-                # Request initial status from all robots so we populate live data
-                for mac in self._robots:
-                    try:
-                        await self.request_status(mac)
-                        _LOGGER.debug("Requested initial status from robot %s", mac)
-                    except Exception as err:
-                        _LOGGER.warning("Failed to request status from %s: %s", mac, err)
+                # STIGA robots do not push status frames — they must be polled.
+                # Send an immediate request, then keep a background task polling
+                # every MQTT_STATUS_POLL_INTERVAL seconds for the duration of
+                # this MQTT session.
+                await self._poll_all_robots()
+                poll_task = asyncio.create_task(self._poll_loop(), name="stiga_mqtt_poll")
 
                 # Race the message consumer against the refresh timer.
                 # On timeout we cleanly close the session so the outer loop
@@ -225,7 +225,31 @@ class StigaMQTT:
                 except TimeoutError:
                     _LOGGER.debug("Token refresh due — cycling MQTT connection")
             finally:
+                if poll_task is not None:
+                    poll_task.cancel()
+                    with contextlib.suppress(asyncio.CancelledError):
+                        await poll_task
                 self._client = None
+
+    async def _poll_loop(self) -> None:
+        """Periodically request status from all robots while connected."""
+        while not self._stop_event.is_set() and self._connected:
+            try:
+                await asyncio.sleep(mc.MQTT_STATUS_POLL_INTERVAL)
+            except asyncio.CancelledError:
+                raise
+            if self._stop_event.is_set() or not self._connected:
+                return
+            await self._poll_all_robots()
+
+    async def _poll_all_robots(self) -> None:
+        """Send a STATUS_REQUEST to every registered robot."""
+        for mac in list(self._robots):
+            try:
+                await self.request_status(mac)
+                _LOGGER.debug("Polled status from robot %s", mac)
+            except Exception as err:
+                _LOGGER.warning("Failed to request status from %s: %s", mac, err)
 
     def _subscriptions(self) -> list[str]:
         topics: list[str] = []

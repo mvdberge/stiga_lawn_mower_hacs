@@ -182,10 +182,10 @@ RAIN_DELAY_INDEX_TO_HOURS: dict[int, int] = {v: k for k, v in RAIN_DELAYS_HOURS.
 
 # Cutting modes (name -> wire index).
 CUTTING_MODES: dict[str, int] = {
-    "denseGrid": 0,
-    "chessBoard": 1,
-    "northSouth": 5,
-    "eastWest": 6,
+    "dense_grid": 0,
+    "chess_board": 1,
+    "north_south": 5,
+    "east_west": 6,
 }
 CUTTING_MODE_INDEX_TO_NAME: dict[int, str] = {v: k for k, v in CUTTING_MODES.items()}
 

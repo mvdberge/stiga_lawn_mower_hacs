@@ -211,7 +211,7 @@ async def test_switch_raises_when_mqtt_disconnected(hass) -> None:
 def test_select_current_option_from_live_settings(hass) -> None:
     c = _make_coordinator(hass, live_settings={"cutting_height_mm": 0, "cutting_mode": 1})
     s = _select(c, "cutting_mode")
-    assert s.current_option == "chessBoard"
+    assert s.current_option == "chess_board"
 
 
 def test_select_rain_delay_current_option(hass) -> None:
@@ -231,7 +231,7 @@ def test_select_unavailable_when_no_live_settings(hass) -> None:
 async def test_select_sends_correct_wire_value(hass) -> None:
     c = _make_coordinator(hass, live_settings={"cutting_mode": 0})
     s = _select(c, "cutting_mode")
-    await s.async_select_option("northSouth")
+    await s.async_select_option("north_south")
     c.mqtt.cmd_settings_update.assert_awaited_once_with("MAC1", {"cutting_mode": 5})
 
 

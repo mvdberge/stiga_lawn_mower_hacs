@@ -50,9 +50,8 @@ def test_cutting_height_map_round_trip() -> None:
 
 
 def test_cutting_modes_match_app_naming() -> None:
-    # These four labels are what the STIGA.GO app shows; preserve their
-    # capitalization so we can use them as select-option keys.
-    assert set(mc.CUTTING_MODES) == {"denseGrid", "chessBoard", "northSouth", "eastWest"}
+    # These four labels match what the STIGA.GO app uses (snake_case for HA compatibility).
+    assert set(mc.CUTTING_MODES) == {"dense_grid", "chess_board", "north_south", "east_west"}
 
 
 def test_rain_delays_map_round_trip() -> None:

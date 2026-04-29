@@ -108,10 +108,10 @@
       "cutting_mode": {
         "name": "Cutting Mode",
         "state": {
-          "denseGrid":  "Dense Grid",
-          "chessBoard": "Chess Board",
-          "northSouth": "North-South",
-          "eastWest":   "East-West"
+          "dense_grid":  "Dense Grid",
+          "chess_board": "Chess Board",
+          "north_south": "North-South",
+          "east_west":   "East-West"
         }
       },
       "rain_sensor_delay": {

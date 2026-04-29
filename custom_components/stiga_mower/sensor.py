@@ -147,7 +147,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         translation_key="cutting_height",
         native_unit_of_measurement=UnitOfLength.MILLIMETERS,
         state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
     ),
     StigaSensorDescription(
         key="total_work_time",
@@ -168,6 +168,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         device_class=SensorDeviceClass.AREA,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
     ),
     StigaSensorDescription(
         key="zone_count",
@@ -194,6 +195,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         device_class=SensorDeviceClass.AREA,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
     ),
     # ---- MQTT live sensors — only populated when MQTT is connected ----
     StigaSensorDescription(

@@ -2,10 +2,11 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:developers.home-assistant.io)",
-      "Bash(.venv/bin/ruff check *)",
-      "Bash(.venv/bin/ruff format *)",
-      "Bash(.venv/bin/python -m pytest tests/*)",
+      "WebFetch(domain:www.hacs.xyz)",
+      "Bash(.venv/bin/ruff *)",
+      "Bash(.venv/bin/python -m ruff *)",
       "Bash(.venv/bin/pytest tests/*)",
+      "Bash(.venv/bin/python -m pytest tests/*)",
       "Bash(gh run view*)",
       "Bash(gh run list*)"
     ]

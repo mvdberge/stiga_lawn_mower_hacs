@@ -10,7 +10,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import StigaAPI
-from .const import CONF_EMAIL, CONF_PASSWORD
+from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_client import StigaMQTT
 
@@ -51,8 +51,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> boo
         coordinator.attach_mqtt(mqtt)
         try:
             await mqtt.start()
-        except Exception:
-            _LOGGER.exception("Failed to start STIGA MQTT client; continuing REST-only")
+        except Exception as err:
+            from homeassistant.helpers import issue_registry as ir
+
+            _LOGGER.error("Failed to start STIGA MQTT client: %s; continuing REST-only", err)
+            ir.async_create_issue(
+                hass,
+                DOMAIN,
+                "mqtt_connection_failed",
+                is_fixable=True,
+                severity=ir.IssueSeverity.WARNING,
+                translation_key="mqtt_connection_failed",
+                translation_placeholders={"error": str(err)},
+            )
             mqtt = None
 
     entry.runtime_data = coordinator

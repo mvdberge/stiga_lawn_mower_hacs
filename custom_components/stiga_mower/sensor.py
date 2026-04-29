@@ -34,6 +34,20 @@ from .coordinator import StigaDataUpdateCoordinator
 
 PARALLEL_UPDATES = 1
 
+# MQTT-only sensors that require a live connection to be available
+_MQTT_ONLY_SENSOR_KEYS = frozenset((
+    "current_zone",
+    "zone_completed_pct",
+    "garden_completed_pct",
+    "satellites",
+    "rtk_quality_pct",
+    "gps_quality",
+    "rssi",
+    "rsrp",
+    "rsrq",
+    "signal_quality_pct",
+))
+
 
 @dataclass(frozen=True, kw_only=True)
 class StigaSensorDescription(SensorEntityDescription):
@@ -353,7 +367,11 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         status = self.coordinator.data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
-        return status.get("has_data") is not False
+        if status.get("has_data") is False:
+            return False
+        if self.entity_description.key in _MQTT_ONLY_SENSOR_KEYS:
+            return self.entity_description.status_key in status
+        return True
 
     @property
     def native_value(self) -> Any:

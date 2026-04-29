@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.0.1] - 2026-04-29
+
+### Fixed
+
+**MQTT sensor availability**
+- MQTT-only sensors (current zone, zone progress, garden progress, GPS quality, satellites, signal strength) now correctly show as **unavailable** when MQTT data is absent, instead of remaining **unknown** when the connection briefly disconnects. Sensors only become available once the first MQTT frame arrives with the expected data fields.
+- REST sensors (battery level, cutting height, work time) remain unaffected and continue to display REST data even without MQTT.
+
+**MQTT connection error reporting**
+- MQTT startup failures are now reported via Home Assistant's issue registry, surfacing a clear warning message to the user instead of silently falling back to REST-only mode. Users can now diagnose connection issues (network, firewall, invalid token) directly from the UI.
+- Improved logging: MQTT errors now log at `ERROR` level with detailed context, making server logs easier to search.
+
+### Technical notes
+- Added `_MQTT_ONLY_SENSOR_KEYS` constant to explicitly list sensors that require MQTT data, preventing maintenance confusion when new MQTT sensors are added.
+- Sensor availability logic now distinguishes between MQTT-only fields and REST-provided fields at the `available` property level, preventing false "available" states when MQTT is down.
+
+---
+
 ## [2.0.0] - 2026-04-28
 
 Complete rewrite of the data path: live status and commands now go through direct MQTT cloud communication instead of REST-only polling. The integration class changes from `cloud_polling` to `cloud_push`.

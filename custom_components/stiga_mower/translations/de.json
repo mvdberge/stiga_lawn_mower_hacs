@@ -108,10 +108,10 @@
       "cutting_mode": {
         "name": "Schnittmuster",
         "state": {
-          "denseGrid":  "Dichtes Raster",
-          "chessBoard": "Schachbrett",
-          "northSouth": "Nord-Süd",
-          "eastWest":   "Ost-West"
+          "dense_grid":  "Dichtes Raster",
+          "chess_board": "Schachbrett",
+          "north_south": "Nord-Süd",
+          "east_west":   "Ost-West"
         }
       },
       "rain_sensor_delay": {

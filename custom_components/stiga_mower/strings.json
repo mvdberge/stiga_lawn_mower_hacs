@@ -8,7 +8,7 @@
   "config": {
     "step": {
       "user": {
-        "title": "Set up STIGA Lawn Mower",
+        "title": "Set up STIGA Robot Mower",
         "description": "Sign in with your STIGA.GO app credentials.",
         "data": {
           "email": "Email address",

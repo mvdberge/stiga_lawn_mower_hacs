@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.0.7] - 2026-04-29
+
+### Fixed
+
+- German translation for `cutting_mode` select: state keys were camelCase (`denseGrid`, `chessBoard`, `northSouth`, `eastWest`) but must be snake_case (`dense_grid`, `chess_board`, `north_south`, `east_west`) to match the option values. German labels were silently falling back to the raw key.
+- Sync `strings.json` setup title with `en.json` ("Set up STIGA Robot Mower").
+
+---
+
 ## [2.0.6] - 2026-04-29
 
 ### Fixed

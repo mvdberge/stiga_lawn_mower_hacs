@@ -120,11 +120,22 @@ class StigaPositionTracker(CoordinatorEntity[StigaDataUpdateCoordinator], Tracke
             info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
         return info
 
-    def _position_frame(self) -> dict | None:
-        """Return the latest MQTT position frame for this robot, or None."""
-        if not self._mac:
+    def _gps_offsets(self) -> tuple[float, float] | None:
+        """Return (lat_offset_cm, lon_offset_cm) from the latest STATUS frame, or None.
+
+        The STATUS frame (field 19) already carries GPS offsets in centimetres
+        relative to the dock.  They are merged into statuses[uuid] via
+        _MQTT_PASSTHROUGH_FIELDS, so there is no need to issue a separate
+        ROBOT_POSITION request.
+        """
+        status = self.coordinator.data.get("statuses", {}).get(self._uuid)
+        if not status:
             return None
-        return self.coordinator.data.get("live_position", {}).get(self._mac)
+        lat_cm = status.get("lat_offset_cm")
+        lon_cm = status.get("lon_offset_cm")
+        if lat_cm is None or lon_cm is None:
+            return None
+        return lat_cm, lon_cm
 
     def _base_position(self) -> tuple[float, float] | None:
         """Return (lat, lon) of the base station from REST garage data."""
@@ -145,36 +156,28 @@ class StigaPositionTracker(CoordinatorEntity[StigaDataUpdateCoordinator], Tracke
     def available(self) -> bool:
         if not super().available:
             return False
-        return self._position_frame() is not None
+        return self._gps_offsets() is not None
 
     @property
     def latitude(self) -> float | None:
-        frame = self._position_frame()
-        if frame is None:
-            return None
-        lat_cm = frame.get("lat_offset_cm")
-        lon_cm = frame.get("lon_offset_cm")
-        if lat_cm is None or lon_cm is None:
+        offsets = self._gps_offsets()
+        if offsets is None:
             return None
         base = self._base_position()
         if base is None:
             return None
-        lat, _ = _offset_to_wgs84(base[0], base[1], lat_cm, lon_cm)
+        lat, _ = _offset_to_wgs84(base[0], base[1], offsets[0], offsets[1])
         return round(lat, 7)
 
     @property
     def longitude(self) -> float | None:
-        frame = self._position_frame()
-        if frame is None:
-            return None
-        lat_cm = frame.get("lat_offset_cm")
-        lon_cm = frame.get("lon_offset_cm")
-        if lat_cm is None or lon_cm is None:
+        offsets = self._gps_offsets()
+        if offsets is None:
             return None
         base = self._base_position()
         if base is None:
             return None
-        _, lon = _offset_to_wgs84(base[0], base[1], lat_cm, lon_cm)
+        _, lon = _offset_to_wgs84(base[0], base[1], offsets[0], offsets[1])
         return round(lon, 7)
 
 

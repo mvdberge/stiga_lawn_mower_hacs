@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.0.5] - 2026-04-29
+
+### Fixed
+
+**Position entity now shows live GPS location**
+- The device tracker was reading from `live_position` (populated only by `ROBOT_POSITION` frames), but `request_position()` was never called. The STATUS frame already carries `lat_offset_cm` / `lon_offset_cm` in the same 30-second poll cycle. Changed the tracker to read directly from `statuses[uuid]` — no extra MQTT round-trip needed.
+
+**Settings entities (switches and selects) now populate on connect**
+- `live_settings` was always empty because `request_settings()` was never sent. The broker does not push settings spontaneously. Added a one-shot `_request_all_settings()` call immediately after the connection-time `_poll_all_robots()`. Switch and select entities (smart cutting height, rain sensor delay, etc.) now show their current values within seconds of MQTT connection.
+
+### Notes
+- **RSSI**: LTE (4G) robots report RSRP and RSRQ but not RSSI (a 2G metric). "Unavailable" for RSSI on LTE robots is expected and correct.
+- **GPS quality / RTK quality**: The robot omits the GPS sub-frame when docked without an active GPS fix. These sensors will show "Unavailable" while docked and populate automatically when the robot starts mowing.
+
+---
+
 ## [2.0.4] - 2026-04-29
 
 ### Fixed

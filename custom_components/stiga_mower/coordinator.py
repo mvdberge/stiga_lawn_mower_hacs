@@ -316,16 +316,31 @@ def _merge_live_into_status(base: dict, live: dict) -> dict:
     if not live:
         return out
 
-    if (status_type := live.get("status_type")) is not None:
-        # status_type strings (DOCKED, MOWING, GOING_HOME, …) intentionally
-        # match the REST currentAction values matthewgream reverse-engineered
-        # from the same protobuf, so the existing _CURRENT_ACTION map in
-        # lawn_mower.py covers them without translation.
+    # status_type strings (DOCKED, MOWING, GOING_HOME, …) intentionally
+    # match the REST currentAction values matthewgream reverse-engineered
+    # from the same protobuf, so the existing _CURRENT_ACTION map in
+    # lawn_mower.py covers them without translation.
+    status_type = live.get("status_type")
+    if status_type is not None:
         out["current_action"] = status_type
+
     if (battery_level := live.get("battery_level")) is not None:
         out["battery_level"] = battery_level
-    if (docking := live.get("docking")) is not None:
+
+    # Field 13 (docking bool) is only present in STATUS frames when the robot
+    # is actively docking/docked.  When absent, fall back to status_type so
+    # is_docked is never left as None while MQTT is live.
+    docking = live.get("docking")
+    if docking is not None:
         out["is_docked"] = docking
+    elif status_type is not None:
+        out["is_docked"] = status_type in ("DOCKED", "CHARGING")
+
+    # The STATUS frame has no dedicated charging boolean; derive it from
+    # status_type when REST battery data is absent (e.g. while paused).
+    if out.get("battery_charging") is None and status_type is not None:
+        out["battery_charging"] = status_type == "CHARGING"
+
     if (info_code := live.get("info_code")) is not None:
         out["error_code"] = info_code
     # Any live frame proves the mower is online and emitting data.

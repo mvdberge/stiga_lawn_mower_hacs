@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.6] - 2026-04-29
+
+### Fixed
+
+**"Angedockt", "Lädt", and "Fehler" no longer show Unknown while paused**
+
+When the robot is paused in the field the REST API omits `isDocked`, `battery.charging`, and `errorCode`. All three binary sensors showed "Unknown" (indeterminate state).
+
+- **Angedockt (is_docked)**: MQTT STATUS field 13 (`docking`) is only included when the robot is actively docking; it is absent when standing still. Added a fallback that derives `is_docked` from `status_type`: any type other than `DOCKED` / `CHARGING` resolves to `False`. This runs in `_merge_live_into_status()` whenever a STATUS frame arrives.
+- **Lädt (battery_charging)**: The STATUS frame has no dedicated charging boolean. Added inference from `status_type`: charging is `True` only when `status_type == "CHARGING"`, and `False` for all other states (mowing, paused, going home, …). Applied only when REST `battery.charging` is absent.
+- **Fehler (error_active)**: An absent `errorCode` means there is no fault — returning `None` (Unknown) was misleading. Changed `is_on` to return `False` directly when `error_code` is missing; `True` only when a non-zero error code is present.
+
+---
+
 ## [2.0.5] - 2026-04-29
 
 ### Fixed

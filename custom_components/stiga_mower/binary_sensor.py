@@ -228,11 +228,13 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
 
         # source == "status"
         raw = status.get(desc.status_key)
+        if desc.key == "error_active":
+            # Absent error_code means no error — return False, not None.
+            # None → Unknown would be misleading; the robot is reachable and
+            # simply has no active fault.
+            return bool(raw)
         if raw is None:
             return None
-        if desc.key == "error_active":
-            # Any non-zero error_code means problem is active.
-            return bool(raw)
         return bool(raw)
 
 

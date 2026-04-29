@@ -2,6 +2,10 @@
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.4%2B-blue)](https://www.home-assistant.io/)
+[![HACS Validation](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/hassfest.yml/badge.svg)](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/hassfest.yml)
+[![Lint](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/lint.yml/badge.svg)](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/lint.yml)
+[![Tests](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/test.yml/badge.svg)](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/test.yml)
+
 
 Native Home Assistant integration for STIGA robotic lawn mowers (Vista / A-Series models).  
 Combines the official [**STIGA Integration REST API**](https://www.stiga.com/int/stiga-integration-api) with direct MQTT cloud communication for live status, real-time position tracking, and full schedule management.
@@ -215,3 +219,4 @@ Classic A-Series robots (as documented by [matthewgream/stiga-api](https://githu
 
 - **Zone selection** — `lawn_mower.start_mowing` always starts the full garden. Mowing specific zones requires direct MQTT command construction (not exposed as a HA service yet).
 - **Base station** — live status of the RTK base station is received but not yet exposed as HA entities.
+- Stiga A-Series (without camera) haven not been tested

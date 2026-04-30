@@ -72,13 +72,9 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         _set_if_present(out, "current_zone", mowing, 1)
         _set_if_present(out, "zone_completed_pct", mowing, 2)
         _set_if_present(out, "garden_completed_pct", mowing, 3)
-        # 18.4 = battery detail sub-message: {1: level%, 2: voltage V, 3: charging bool}
-        if isinstance(batt_detail := mowing.get(4), dict):
-            _set_if_present(out, "battery_level", batt_detail, 1)
-            if (voltage := batt_detail.get(2)) is not None and isinstance(voltage, float):
-                out["battery_voltage"] = round(voltage, 2)
-            if (charging := batt_detail.get(3)) is not None:
-                out["battery_charging"] = bool(charging)
+        # 18.4 = battery detail sub-message: {1: unknown counter, 2: voltage V, 3: unknown flag}
+        if isinstance(batt_detail := mowing.get(4), dict) and (voltage := batt_detail.get(2)) is not None and isinstance(voltage, float):
+            out["battery_voltage"] = round(voltage, 2)
 
     if isinstance(location := raw.get(19), dict):
         # 19.1 = gps_quality enum (absent = implicitly GOOD on this firmware)

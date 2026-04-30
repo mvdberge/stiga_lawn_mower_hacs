@@ -77,9 +77,9 @@ def test_decode_status_full_frame() -> None:
     assert out["info_sensor"] == "rain_sensor"
     assert out["docking"] is False
     assert out["battery_capacity_mah"] == 5000
-    assert out["battery_level"] == 85        # 18.4.1 overrides 17.2 (more precise)
+    assert out["battery_level"] == 87        # from 17.2
     assert out["battery_voltage"] == pytest.approx(11.5)
-    assert out["battery_charging"] is True
+    assert "battery_charging" not in out  # derived from status_type in coordinator, not STATUS frame
     assert out["current_zone"] == 3
     assert out["zone_completed_pct"] == 42
     assert out["garden_completed_pct"] == 78

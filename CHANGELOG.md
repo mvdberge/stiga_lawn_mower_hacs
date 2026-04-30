@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.1.1] - 2026-04-30
+
+### Fixed
+
+- `battery_level` no longer overwritten by field 18.4.1, which is an unknown incrementing counter (not a percentage). Correct value comes from field 17.2.
+- `battery_charging` (`Lädt`) no longer incorrectly set to `True` while mowing. Field 18.4.3 is a constant flag (not a charging boolean); charging state is now derived exclusively from `status_type == CHARGING`.
+
+---
+
 ## [2.1.0] - 2026-04-30
 
 ### Fixed

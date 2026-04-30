@@ -296,7 +296,6 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "rsrq",
     "battery_voltage",
     "battery_current",
-    "battery_charging",
     "battery_temp_c",
     "info_label",
     "info_sensor",

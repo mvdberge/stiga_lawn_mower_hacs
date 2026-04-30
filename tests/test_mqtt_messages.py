@@ -52,8 +52,8 @@ def test_decode_status_full_frame() -> None:
     """
     payload = pb.encode(
         {
-            1: 1,   # status_valid
-            2: 1,   # operable
+            1: 1,  # status_valid
+            2: 1,  # operable
             3: 32,  # CUTTING_BORDER
             4: {1: 2, 2: 22},  # status_error
             10: {1: 0x01A9, 2: 0, 3: 0, 4: 0},  # info_code: RAIN_SENSOR
@@ -77,9 +77,11 @@ def test_decode_status_full_frame() -> None:
     assert out["info_sensor"] == "rain_sensor"
     assert out["docking"] is False
     assert out["battery_capacity_mah"] == 5000
-    assert out["battery_level"] == 87        # from 17.2
+    assert out["battery_level"] == 87  # from 17.2
     assert out["battery_voltage"] == pytest.approx(11.5)
-    assert "battery_charging" not in out  # derived from status_type in coordinator, not STATUS frame
+    assert (
+        "battery_charging" not in out
+    )  # derived from status_type in coordinator, not STATUS frame
     assert out["current_zone"] == 3
     assert out["zone_completed_pct"] == 42
     assert out["garden_completed_pct"] == 78

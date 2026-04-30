@@ -73,7 +73,11 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         _set_if_present(out, "zone_completed_pct", mowing, 2)
         _set_if_present(out, "garden_completed_pct", mowing, 3)
         # 18.4 = battery detail sub-message: {1: unknown counter, 2: voltage V, 3: unknown flag}
-        if isinstance(batt_detail := mowing.get(4), dict) and (voltage := batt_detail.get(2)) is not None and isinstance(voltage, float):
+        if (
+            isinstance(batt_detail := mowing.get(4), dict)
+            and (voltage := batt_detail.get(2)) is not None
+            and isinstance(voltage, float)
+        ):
             out["battery_voltage"] = round(voltage, 2)
 
     if isinstance(location := raw.get(19), dict):

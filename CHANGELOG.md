@@ -1,5 +1,21 @@
 # Changelog
 
+## [2.1.0] - 2026-04-30
+
+### Fixed
+
+- Corrected STATUS frame field mapping based on live capture analysis:
+  - `battery_voltage`, `battery_current`, `battery_charging` are now decoded from field 18.4 (mowing sub-message), not absent REST data
+  - `battery_temp_c` decoded from field 17.7
+  - `total_work_time` decoded from field 17.9 (minutes)
+  - `rtk_fix_type` decoded from field 19.6 (4 = RTK fixed)
+  - Removed erroneous `lat_offset_cm` / `lon_offset_cm` from STATUS frame (position data comes exclusively from the `ROBOT_POSITION` topic)
+  - `rssi` correctly decoded from field 20.3.11 with INT16_MIN sentinel filter (−32768 = modem unavailable, suppressed)
+  - Removed `signal_quality_pct` from field 20.3.11 (was misidentified)
+  - `gps_quality` (field 19.1) is not emitted by this firmware; sensor remains unavailable when absent
+
+---
+
 ## [2.0.7] - 2026-04-29
 
 ### Fixed

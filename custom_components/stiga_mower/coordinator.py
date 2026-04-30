@@ -289,17 +289,18 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "zone_completed_pct",
     "garden_completed_pct",
     "satellites",
+    "gps_quality",
+    "rtk_fix_type",
     "rssi",
     "rsrp",
     "rsrq",
-    "rtk_quality_pct",
-    "gps_quality",
-    "signal_quality_pct",
+    "battery_voltage",
+    "battery_current",
+    "battery_charging",
+    "battery_temp_c",
     "info_label",
     "info_sensor",
     "operable",
-    "lat_offset_cm",
-    "lon_offset_cm",
 )
 
 

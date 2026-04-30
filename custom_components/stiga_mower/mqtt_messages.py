@@ -60,13 +60,28 @@ def decode_status(payload: bytes) -> dict[str, Any]:
     if isinstance(battery := raw.get(17), dict):
         _set_if_present(out, "battery_capacity_mah", battery, 1)
         _set_if_present(out, "battery_level", battery, 2)
+        # 17.7 = battery temperature °C (float), 17.9 = total work time (minutes),
+        # 17.12 = battery current A (negative = discharging)
+        if (temp := battery.get(7)) is not None and isinstance(temp, float):
+            out["battery_temp_c"] = round(temp, 1)
+        _set_if_present(out, "total_work_time", battery, 9)
+        if (current := battery.get(12)) is not None and isinstance(current, float):
+            out["battery_current"] = round(current, 3)
 
     if isinstance(mowing := raw.get(18), dict):
         _set_if_present(out, "current_zone", mowing, 1)
         _set_if_present(out, "zone_completed_pct", mowing, 2)
         _set_if_present(out, "garden_completed_pct", mowing, 3)
+        # 18.4 = battery detail sub-message: {1: level%, 2: voltage V, 3: charging bool}
+        if isinstance(batt_detail := mowing.get(4), dict):
+            _set_if_present(out, "battery_level", batt_detail, 1)
+            if (voltage := batt_detail.get(2)) is not None and isinstance(voltage, float):
+                out["battery_voltage"] = round(voltage, 2)
+            if (charging := batt_detail.get(3)) is not None:
+                out["battery_charging"] = bool(charging)
 
     if isinstance(location := raw.get(19), dict):
+        # 19.1 = gps_quality enum (absent = implicitly GOOD on this firmware)
         _set_if_present(
             out,
             "gps_quality",
@@ -75,11 +90,10 @@ def decode_status(payload: bytes) -> dict[str, Any]:
             lambda v: mc.ROBOT_GPS_QUALITY.get(v, v),
         )
         _set_if_present(out, "satellites", location, 2)
-        if (lat := pb.read_double_le(location.get(3))) is not None:
-            out["lat_offset_cm"] = lat
-        if (lon := pb.read_double_le(location.get(4))) is not None:
-            out["lon_offset_cm"] = lon
-        _set_if_present(out, "rtk_quality_pct", location, 5)
+        # 19.3 and 19.4 are accuracy/dilution metrics, NOT position offsets.
+        # Position comes from the separate ROBOT_POSITION topic.
+        # 19.6 = RTK fix type (4 = RTK fixed)
+        _set_if_present(out, "rtk_fix_type", location, 6)
 
     network = raw.get(20)
     if isinstance(network, dict) and isinstance(network.get(3), dict):
@@ -87,9 +101,12 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         _set_if_present(out, "network_kind", sub, 4)
         _set_if_present(out, "network_type", sub, 5)
         _set_if_present(out, "network_band", sub, 6)
-        _set_if_present(out, "rssi", sub, 7, _as_signed_int32)
+        # 20.3.10 = rsrp, 20.3.11 = rssi (-32768 = modem sentinel for unavailable),
+        # 20.3.12 = rsrq
         _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
-        _set_if_present(out, "signal_quality_pct", sub, 11, _as_signed_int32)
+        rssi = _as_signed_int32(sub[11]) if 11 in sub else None
+        if rssi is not None and rssi != -32768:
+            out["rssi"] = rssi
         _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
 
     return out

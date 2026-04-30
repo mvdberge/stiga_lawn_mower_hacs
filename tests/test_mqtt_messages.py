@@ -42,27 +42,28 @@ def _wrap_len(field: int, payload: bytes) -> bytes:
 
 
 def test_decode_status_full_frame() -> None:
-    """A frame with every documented field roundtrips to descriptive keys."""
-    # Build via the codec for VARINT + nested dicts; FIXED64 fields appended
-    # manually because the codec doesn't emit FIXED64 (decoder leaves them raw).
-    body = pb.encode(
+    """A frame with every documented field roundtrips to descriptive keys.
+
+    Field mapping verified against live captures (2026-04-30):
+      17 = battery sub-msg: {1:capacity_mah, 2:level%, 7:temp_c, 9:work_time_min, 12:current_a}
+      18 = mowing sub-msg:  {1:zone, 2:zone_pct, 3:garden_pct, 4:{1:level%, 2:voltage_v, 3:charging}}
+      19 = location sub-msg:{1:gps_quality_enum, 2:satellites, 6:rtk_fix_type}
+      20 = network sub-msg: {3:{4:kind, 5:type, 6:band, 10:rsrp, 11:rssi(-32768=N/A), 12:rsrq}}
+    """
+    payload = pb.encode(
         {
-            1: 1,  # status_valid
-            2: 1,  # operable
+            1: 1,   # status_valid
+            2: 1,   # operable
             3: 32,  # CUTTING_BORDER
             4: {1: 2, 2: 22},  # status_error
             10: {1: 0x01A9, 2: 0, 3: 0, 4: 0},  # info_code: RAIN_SENSOR
             13: 0,  # not docking
-            17: {1: 5000, 2: 87},  # battery
-            18: {1: 3, 2: 42, 3: 78},  # mowing
-            20: {3: {4: 5, 5: 9, 6: 3, 7: -65, 10: -90, 11: 73, 12: -10}},
+            17: {1: 5000, 2: 87},  # battery: capacity + level
+            18: {1: 3, 2: 42, 3: 78, 4: {1: 85, 2: 11.5, 3: 1}},  # mowing + batt detail
+            19: {1: 0, 2: 14, 6: 4},  # location: gps_quality=GOOD, satellites=14, rtk_fixed
+            20: {3: {4: 5, 5: 9, 6: 3, 10: -90, 11: -65, 12: -10}},  # network
         }
     )
-    # location subfield needs FIXED64 doubles for fields 3 + 4
-    location_inner = pb.encode({1: 0, 2: 14, 5: 95})
-    location_inner += _fixed64(3, 123.4)  # lat offset cm
-    location_inner += _fixed64(4, -56.7)  # lon offset cm
-    payload = body + _wrap_len(19, location_inner)
 
     out = mm.decode_status(payload)
 
@@ -76,19 +77,21 @@ def test_decode_status_full_frame() -> None:
     assert out["info_sensor"] == "rain_sensor"
     assert out["docking"] is False
     assert out["battery_capacity_mah"] == 5000
-    assert out["battery_level"] == 87
+    assert out["battery_level"] == 85        # 18.4.1 overrides 17.2 (more precise)
+    assert out["battery_voltage"] == pytest.approx(11.5)
+    assert out["battery_charging"] is True
     assert out["current_zone"] == 3
     assert out["zone_completed_pct"] == 42
     assert out["garden_completed_pct"] == 78
     assert out["gps_quality"] == "GOOD"
     assert out["satellites"] == 14
-    assert out["lat_offset_cm"] == pytest.approx(123.4)
-    assert out["lon_offset_cm"] == pytest.approx(-56.7)
-    assert out["rtk_quality_pct"] == 95
+    assert out["rtk_fix_type"] == 4
     assert out["rssi"] == -65
     assert out["rsrp"] == -90
     assert out["rsrq"] == -10
-    assert out["signal_quality_pct"] == 73
+    # lat_offset_cm / lon_offset_cm come from ROBOT_POSITION topic, not STATUS
+    assert "lat_offset_cm" not in out
+    assert "lon_offset_cm" not in out
 
 
 def test_decode_status_minimal_frame() -> None:

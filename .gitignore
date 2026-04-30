@@ -2,6 +2,8 @@ stiga_mower_status.py
 login.secret
 *.secret
 capture_schedule.py
+capture_live_dump.py
+capture_live_dump.json
 
 # Internal endpoint reference (contains undocumented API details and example
 # responses with personal UUIDs/MAC addresses) — do not publish.

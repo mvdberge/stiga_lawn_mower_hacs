@@ -110,7 +110,12 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             _LOGGER.debug("MQTT STATUS frame for %s decoded to empty dict (protobuf issue?)", mac)
         else:
             _LOGGER.debug("MQTT STATUS for %s: %s", mac, list(data.keys()))
-        self._live_status[mac] = data
+        # STIGA firmware alternates between full frames (battery + location +
+        # network sub-messages present) and scoped partial frames (mowing-only).
+        # Carry sticky telemetry forward so total_work_time, RSSI, battery
+        # temperature etc. don't flicker to "unavailable" between full frames.
+        prev = self._live_status.get(mac, {})
+        self._live_status[mac] = _merge_sticky_live(prev, data) if data else prev
         self._publish_update()
 
     def _on_mqtt_position(self, mac: str, data: dict[str, Any]) -> None:
@@ -297,10 +302,57 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "battery_voltage",
     "battery_current",
     "battery_temp_c",
+    "total_work_time",
     "info_label",
     "info_sensor",
     "operable",
 )
+
+
+# Telemetry fields that the firmware emits only in *full* STATUS frames
+# (battery sub-message field 17, location field 19, network field 20).
+# Partial frames — emitted when the app polls a scoped sub-status — would
+# otherwise wipe these values and force the entity to flicker between the
+# live MQTT reading and the (often-stale) REST fallback.  Keep the last
+# known value when the new frame doesn't carry the field.
+#
+# Status fields that *must* clear (info_code, info_label, info_sensor,
+# docking) deliberately stay out of this set: when the robot exits an
+# error state the next frame omits field 10, and we want that absence
+# to clear the error rather than persist forever.
+_STICKY_LIVE_FIELDS = frozenset(
+    {
+        "battery_capacity_mah",
+        "battery_level",
+        "battery_temp_c",
+        "battery_current",
+        "battery_voltage",
+        "total_work_time",
+        "satellites",
+        "rtk_fix_type",
+        "gps_quality",
+        "network_kind",
+        "network_type",
+        "network_band",
+        "rsrp",
+        "rssi",
+        "rsrq",
+    }
+)
+
+
+def _merge_sticky_live(prev: dict, new: dict) -> dict:
+    """Merge a fresh STATUS frame onto the previous one.
+
+    Fields named in ``_STICKY_LIVE_FIELDS`` carry over from ``prev`` when
+    the new frame does not include them; everything else takes its value
+    from the new frame (or is dropped if the new frame omits it).
+    """
+    merged = dict(new)
+    for key in _STICKY_LIVE_FIELDS:
+        if key not in merged and key in prev:
+            merged[key] = prev[key]
+    return merged
 
 
 def _merge_live_into_status(base: dict, live: dict) -> dict:

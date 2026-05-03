@@ -9,6 +9,7 @@ import pytest
 from custom_components.stiga_mower.coordinator import (
     StigaDataUpdateCoordinator,
     _merge_live_into_status,
+    _merge_sticky_live,
 )
 
 # ---------------------------------------------------------------- _merge_live_into_status
@@ -91,6 +92,65 @@ def test_merge_keeps_rest_charging_when_mqtt_has_no_status_type() -> None:
     assert out["battery_charging"] is True
 
 
+def test_merge_passthrough_total_work_time() -> None:
+    # REST `/api/garage` reports total_work_time=0 even when MQTT has the
+    # real value (captured 2026-04-30: REST=0, MQTT field 17.9 = 4461 min).
+    out = _merge_live_into_status({"total_work_time": 0}, {"total_work_time": 4461})
+    assert out["total_work_time"] == 4461
+
+
+# ---------------------------------------------------------------- _merge_sticky_live
+
+
+def test_sticky_live_carries_telemetry_across_partial_frames() -> None:
+    # Captured 2026-04-30: full frame has battery + network sub-messages,
+    # the next mowing-only partial frame omits them. They must not
+    # disappear from the cached live state.
+    full = {
+        "status_type": "MOWING",
+        "battery_level": 83,
+        "battery_temp_c": 28.4,
+        "total_work_time": 4461,
+        "rsrp": -94,
+        "satellites": 32,
+    }
+    partial = {
+        "status_type": "MOWING",
+        "current_zone": 2,
+        "zone_completed_pct": 21,
+        "garden_completed_pct": 38,
+    }
+    merged = _merge_sticky_live(full, partial)
+    # New frame's keys win
+    assert merged["current_zone"] == 2
+    assert merged["zone_completed_pct"] == 21
+    # Sticky telemetry persists
+    assert merged["battery_level"] == 83
+    assert merged["battery_temp_c"] == 28.4
+    assert merged["total_work_time"] == 4461
+    assert merged["rsrp"] == -94
+    assert merged["satellites"] == 32
+
+
+def test_sticky_live_drops_non_sticky_when_absent() -> None:
+    # info_code is non-sticky: when the robot exits an error state the next
+    # frame omits field 10, and the cached live state must reflect that.
+    prev = {"status_type": "BLOCKED", "info_code": 401, "info_label": "BLOCKED"}
+    new = {"status_type": "GOING_HOME"}
+    merged = _merge_sticky_live(prev, new)
+    assert merged["status_type"] == "GOING_HOME"
+    assert "info_code" not in merged
+    assert "info_label" not in merged
+
+
+def test_sticky_live_new_frame_wins_for_sticky_fields_too() -> None:
+    prev = {"battery_level": 50, "rsrp": -100}
+    new = {"battery_level": 65, "rsrp": -90}
+    merged = _merge_sticky_live(prev, new)
+    assert merged["battery_level"] == 65
+    assert merged["rsrp"] == -90
+
+
 # ---------------------------------------------------------------- Push integration
 
 
@@ -134,6 +194,35 @@ def test_status_push_merges_into_statuses(coordinator: StigaDataUpdateCoordinato
     assert merged["current_action"] == "MOWING"
     assert merged["battery_level"] == 65
     assert merged["has_data"] is True
+
+
+def test_status_push_partial_frame_keeps_total_work_time(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    # Replays the captured pattern: full frame followed by a mowing-only
+    # partial frame. total_work_time must not flicker back to REST's 0.
+    coordinator._on_mqtt_status(
+        "MAC1",
+        {
+            "status_type": "MOWING",
+            "battery_level": 83,
+            "total_work_time": 4461,
+            "rsrp": -94,
+        },
+    )
+    coordinator._on_mqtt_status(
+        "MAC1",
+        {
+            "status_type": "MOWING",
+            "current_zone": 2,
+            "zone_completed_pct": 21,
+        },
+    )
+    merged = coordinator.data["statuses"]["u1"]
+    assert merged["total_work_time"] == 4461
+    assert merged["battery_level"] == 83
+    assert merged["rsrp"] == -94
+    assert merged["current_zone"] == 2
 
 
 def test_position_push_lands_in_live_position(

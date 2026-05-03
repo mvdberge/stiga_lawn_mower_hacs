@@ -27,6 +27,7 @@ PARALLEL_UPDATES = 1
 class _ButtonAction(StrEnum):
     CALIBRATE_BLADES = "calibrate_blades"
     REFRESH_STATUS = "refresh_status"
+    RESET_ERROR = "reset_error"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -53,6 +54,11 @@ BUTTON_DESCRIPTIONS: tuple[StigaButtonDescription, ...] = (
         action=_ButtonAction.REFRESH_STATUS,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
+    ),
+    StigaButtonDescription(
+        key="reset_error",
+        translation_key="reset_error",
+        action=_ButtonAction.RESET_ERROR,
     ),
 )
 
@@ -140,6 +146,8 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
                 await mqtt.cmd_calibrate_blades(self._mac)
             elif action == _ButtonAction.REFRESH_STATUS:
                 await mqtt.request_status(self._mac)
+            elif action == _ButtonAction.RESET_ERROR:
+                await mqtt.cmd_reset_error(self._mac)
         except Exception as err:
             raise HomeAssistantError(
                 f"Could not execute {self.entity_description.key}: {err}"

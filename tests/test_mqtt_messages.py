@@ -343,3 +343,10 @@ def test_encode_simple_request_settings() -> None:
     encoded = mm.encode_simple_request(mc.ROBOT_CMD_SETTINGS_REQUEST)
     expected = pb.encode({1: 17, 3: 17})
     assert encoded == expected
+
+
+def test_encode_reset_error_matches_app_capture() -> None:
+    # Frame captured 2026-05-03 from the official STIGA.GO app pressing
+    # "Reset error" (capture_app_trace.jsonl). Robot ACKed with result=1.
+    encoded = mm.encode_simple_request(mc.ROBOT_CMD_RESET_ERROR)
+    assert encoded.hex() == "08251825"

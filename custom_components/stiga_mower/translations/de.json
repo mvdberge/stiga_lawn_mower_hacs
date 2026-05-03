@@ -125,7 +125,8 @@
     },
     "button": {
       "calibrate_blades": { "name": "Messer kalibrieren" },
-      "refresh_status":   { "name": "Status aktualisieren" }
+      "refresh_status":   { "name": "Status aktualisieren" },
+      "reset_error":      { "name": "Fehler zurücksetzen" }
     },
     "calendar": {
       "mowing_schedule": { "name": "Mähplan" }

@@ -42,6 +42,7 @@ def _make_coordinator(
     mqtt.cmd_go_home = AsyncMock()
     mqtt.cmd_settings_update = AsyncMock()
     mqtt.cmd_calibrate_blades = AsyncMock()
+    mqtt.cmd_reset_error = AsyncMock()
     mqtt.request_status = AsyncMock()
     c.mqtt = mqtt
     return c
@@ -260,6 +261,14 @@ async def test_button_refresh_status(hass) -> None:
     b = _button(c, "refresh_status")
     await b.async_press()
     c.mqtt.request_status.assert_awaited_once_with("MAC1")
+
+
+@pytest.mark.asyncio
+async def test_button_reset_error(hass) -> None:
+    c = _make_coordinator(hass)
+    b = _button(c, "reset_error")
+    await b.async_press()
+    c.mqtt.cmd_reset_error.assert_awaited_once_with("MAC1")
 
 
 @pytest.mark.asyncio

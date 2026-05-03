@@ -408,6 +408,13 @@ class StigaMQTT:
         payload = mm.encode_simple_request(mc.ROBOT_CMD_CALIBRATE_BLADES)
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
 
+    async def cmd_reset_error(self, mac: str) -> None:
+        """Send ROBOT_CMD_RESET_ERROR (37) — clear the current error so the
+        mower can resume mowing.  Mirrors the STIGA.GO app's "Reset error".
+        """
+        payload = mm.encode_simple_request(mc.ROBOT_CMD_RESET_ERROR)
+        await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
+
     async def cmd_settings_update(self, mac: str, settings: dict) -> None:
         """Send ROBOT_CMD_SETTINGS_UPDATE (18) with the given settings fields."""
         payload = mm.encode_settings_update(settings)

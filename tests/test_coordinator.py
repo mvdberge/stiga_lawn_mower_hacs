@@ -71,6 +71,26 @@ def test_merge_live_battery_level_uses_mqtt_value_when_rest_missing() -> None:
     assert out["battery_level"] == 91
 
 
+def test_merge_live_status_type_overrides_stale_rest_charging_flag() -> None:
+    # Captured 2026-04-30: REST returned charging:true while MQTT showed
+    # status_type=MOWING (stale cloud cache). The live frame must win.
+    base = {"battery_charging": True, "current_action": "WORKING"}
+    out = _merge_live_into_status(base, {"status_type": "MOWING"})
+    assert out["battery_charging"] is False
+    assert out["current_action"] == "MOWING"
+
+
+def test_merge_live_status_charging_sets_battery_charging() -> None:
+    out = _merge_live_into_status({"battery_charging": False}, {"status_type": "CHARGING"})
+    assert out["battery_charging"] is True
+
+
+def test_merge_keeps_rest_charging_when_mqtt_has_no_status_type() -> None:
+    # A partial MQTT frame (e.g. position-only) must not flip the flag.
+    out = _merge_live_into_status({"battery_charging": True}, {"current_zone": 2})
+    assert out["battery_charging"] is True
+
+
 # ---------------------------------------------------------------- Push integration
 
 

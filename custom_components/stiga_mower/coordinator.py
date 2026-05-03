@@ -337,8 +337,11 @@ def _merge_live_into_status(base: dict, live: dict) -> dict:
         out["is_docked"] = status_type in ("DOCKED", "CHARGING")
 
     # The STATUS frame has no dedicated charging boolean; derive it from
-    # status_type when REST battery data is absent (e.g. while paused).
-    if out.get("battery_charging") is None and status_type is not None:
+    # status_type. The REST `battery.charging` flag lags reality (the cloud
+    # may still report charging:true while the mower is already MOWING), so
+    # the live MQTT status_type is the source of truth — same policy as
+    # current_action / is_docked above.
+    if status_type is not None:
         out["battery_charging"] = status_type == "CHARGING"
 
     if (info_code := live.get("info_code")) is not None:

@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.2.3] - 2026-05-04
+
+### Changed
+
+- `hw_version` is now only populated when it differs from the firmware version. On most devices the cloud reports the same value in both protobuf VERSION slots, so the duplicate entry was noise.
+
 ## [2.2.2] - 2026-05-04
 
 ### Fixed

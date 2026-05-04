@@ -131,7 +131,7 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
         hw, fw, _build = split_firmware_version(a.get("firmware_version"))
         if fw:
             info["sw_version"] = fw
-        if hw:
+        if hw and hw != fw:
             info["hw_version"] = hw
         if mac := a.get("mac_address"):
             info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}

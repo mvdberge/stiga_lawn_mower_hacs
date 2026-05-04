@@ -43,7 +43,6 @@ _MQTT_ONLY_SENSOR_KEYS = frozenset(
         "satellites",
         "rtk_quality_pct",
         "gps_quality",
-        "rssi",
         "rsrp",
         "rsrq",
         "signal_quality_pct",
@@ -246,16 +245,6 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         entity_registry_enabled_default=False,
     ),
     # Network / cellular signal diagnostics
-    StigaSensorDescription(
-        key="rssi",
-        status_key="rssi",
-        translation_key="rssi",
-        native_unit_of_measurement=SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
-        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        entity_registry_enabled_default=False,
-    ),
     StigaSensorDescription(
         key="rsrp",
         status_key="rsrp",

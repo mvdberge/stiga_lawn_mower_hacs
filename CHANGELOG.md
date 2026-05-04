@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.2.1] - 2026-05-04
+
+### Added
+
+- `rtk_quality_pct` decoded from STATUS field 19.5 (Survey-In quality, %)
+
+### Fixed
+
+- `signal_quality_pct` now correctly decoded from field 20.3.11 (was previously misread as RSSI). The −32768 modem sentinel keeps the entity unavailable when the value is not reported.
+
+### Removed
+
+- RSSI sensor — value was sourced from the wrong protobuf field; RSRP covers the same information correctly.
+
+## [2.2.0] - 2026-05-03
+
+### Added
+
+- **Reset error** button entity — clear active fault codes from the mower via MQTT
+
+### Fixed
+
+- Status data no longer "sticks" on reconnect — stale values from previous session are cleared during init
+- STATUS frame loading issue that caused incorrect field parsing after reconnects
+
 ## [2.1.1] - 2026-04-30
 
 ### Fixed

@@ -73,7 +73,6 @@
       "satellites":          { "name": "GPS Satellites" },
       "rtk_quality_pct":     { "name": "RTK Quality" },
       "gps_quality":         { "name": "GPS Quality" },
-      "rssi":                { "name": "RSSI" },
       "rsrp":                { "name": "RSRP" },
       "rsrq":                { "name": "RSRQ" },
       "signal_quality_pct":  { "name": "Signal Quality" }

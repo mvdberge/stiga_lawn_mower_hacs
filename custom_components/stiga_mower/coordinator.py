@@ -42,7 +42,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         "statuses": { "<uuid>": { "mowing_mode": ..., "battery_level": ...,
                                   # MQTT-only fields when available:
                                   "current_zone": ..., "zone_completed_pct": ...,
-                                  "rssi": ..., "info_code": ..., ... }, ... },
+                                  "rsrp": ..., "info_code": ..., ... }, ... },
         "meta":     { "<uuid>": { "model_name": "A 15v",
                                   "garden_area_m2": 656, ... }, ... },
         "mqtt_connected": bool,
@@ -296,7 +296,8 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "satellites",
     "gps_quality",
     "rtk_fix_type",
-    "rssi",
+    "rtk_quality_pct",
+    "signal_quality_pct",
     "rsrp",
     "rsrq",
     "battery_voltage",
@@ -330,12 +331,13 @@ _STICKY_LIVE_FIELDS = frozenset(
         "total_work_time",
         "satellites",
         "rtk_fix_type",
+        "rtk_quality_pct",
         "gps_quality",
         "network_kind",
         "network_type",
         "network_band",
         "rsrp",
-        "rssi",
+        "signal_quality_pct",
         "rsrq",
     }
 )

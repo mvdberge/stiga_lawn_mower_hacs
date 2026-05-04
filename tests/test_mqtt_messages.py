@@ -47,8 +47,8 @@ def test_decode_status_full_frame() -> None:
     Field mapping verified against live captures (2026-04-30):
       17 = battery sub-msg: {1:capacity_mah, 2:level%, 7:temp_c, 9:work_time_min, 12:current_a}
       18 = mowing sub-msg:  {1:zone, 2:zone_pct, 3:garden_pct, 4:{1:level%, 2:voltage_v, 3:charging}}
-      19 = location sub-msg:{1:gps_quality_enum, 2:satellites, 6:rtk_fix_type}
-      20 = network sub-msg: {3:{4:kind, 5:type, 6:band, 10:rsrp, 11:rssi(-32768=N/A), 12:rsrq}}
+      19 = location sub-msg:{1:gps_quality_enum, 2:satellites, 5:rtk_quality_pct, 6:rtk_fix_type}
+      20 = network sub-msg: {3:{4:kind, 5:type, 6:band, 10:rsrp, 11:signal_quality_pct(-32768=N/A), 12:rsrq}}
     """
     payload = pb.encode(
         {
@@ -60,8 +60,9 @@ def test_decode_status_full_frame() -> None:
             13: 0,  # not docking
             17: {1: 5000, 2: 87},  # battery: capacity + level
             18: {1: 3, 2: 42, 3: 78, 4: {1: 85, 2: 11.5, 3: 1}},  # mowing + batt detail
-            19: {1: 0, 2: 14, 6: 4},  # location: gps_quality=GOOD, satellites=14, rtk_fixed
-            20: {3: {4: 5, 5: 9, 6: 3, 10: -90, 11: -65, 12: -10}},  # network
+            # location: gps_quality=GOOD, satellites=14, rtk_quality=95%, rtk_fixed
+            19: {1: 0, 2: 14, 5: 95, 6: 4},
+            20: {3: {4: 5, 5: 9, 6: 3, 10: -90, 11: 70, 12: -10}},  # network
         }
     )
 
@@ -87,8 +88,9 @@ def test_decode_status_full_frame() -> None:
     assert out["garden_completed_pct"] == 78
     assert out["gps_quality"] == "GOOD"
     assert out["satellites"] == 14
+    assert out["rtk_quality_pct"] == 95
     assert out["rtk_fix_type"] == 4
-    assert out["rssi"] == -65
+    assert out["signal_quality_pct"] == 70
     assert out["rsrp"] == -90
     assert out["rsrq"] == -10
     # lat_offset_cm / lon_offset_cm come from ROBOT_POSITION topic, not STATUS
@@ -101,6 +103,16 @@ def test_decode_status_minimal_frame() -> None:
     payload = pb.encode({1: 1, 3: 4})  # status_valid + DOCKED
     out = mm.decode_status(payload)
     assert out == {"status_valid": True, "status_type": "DOCKED"}
+
+
+def test_decode_status_signal_quality_sentinel_dropped() -> None:
+    """Modem reports -32768 in 20.3.11 when signal quality is unavailable;
+    the decoder must omit the key rather than surface the sentinel."""
+    payload = pb.encode({20: {3: {10: -90, 11: -32768, 12: -8}}})
+    out = mm.decode_status(payload)
+    assert out["rsrp"] == -90
+    assert out["rsrq"] == -8
+    assert "signal_quality_pct" not in out
 
 
 def test_decode_status_unknown_status_type_passthrough() -> None:

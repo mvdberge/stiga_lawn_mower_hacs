@@ -55,7 +55,7 @@ def test_merge_passes_through_mqtt_only_fields() -> None:
         "current_zone": 3,
         "zone_completed_pct": 42,
         "garden_completed_pct": 78,
-        "rssi": -65,
+        "signal_quality_pct": 70,
         "satellites": 14,
         "info_label": "RAIN_SENSOR",
         "info_sensor": "rain_sensor",

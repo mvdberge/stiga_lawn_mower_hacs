@@ -92,6 +92,8 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         _set_if_present(out, "satellites", location, 2)
         # 19.3 and 19.4 are accuracy/dilution metrics, NOT position offsets.
         # Position comes from the separate ROBOT_POSITION topic.
+        # 19.5 = RTK quality % (Survey-In progress, 0–100)
+        _set_if_present(out, "rtk_quality_pct", location, 5)
         # 19.6 = RTK fix type (4 = RTK fixed)
         _set_if_present(out, "rtk_fix_type", location, 6)
 
@@ -101,12 +103,14 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         _set_if_present(out, "network_kind", sub, 4)
         _set_if_present(out, "network_type", sub, 5)
         _set_if_present(out, "network_band", sub, 6)
-        # 20.3.10 = rsrp, 20.3.11 = rssi (-32768 = modem sentinel for unavailable),
-        # 20.3.12 = rsrq
+        # 20.3.10 = rsrp, 20.3.11 = signal_quality_pct (-32768 = modem sentinel
+        # for unavailable), 20.3.12 = rsrq. Field 20.3.7 is RSSI per
+        # matthewgream/stiga-api but reports implausible values on this
+        # firmware, so it is not surfaced.
         _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
-        rssi = _as_signed_int32(sub[11]) if 11 in sub else None
-        if rssi is not None and rssi != -32768:
-            out["rssi"] = rssi
+        sq = _as_signed_int32(sub[11]) if 11 in sub else None
+        if sq is not None and sq != -32768:
+            out["signal_quality_pct"] = sq
         _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
 
     return out

@@ -79,7 +79,6 @@ def test_gps_sensor_value(hass, key, status_key, value) -> None:
 @pytest.mark.parametrize(
     "key,status_key,value",
     [
-        ("rssi", "rssi", -65),
         ("rsrp", "rsrp", -80),
         ("rsrq", "rsrq", -10),
         ("signal_quality_pct", "signal_quality_pct", 70),
@@ -100,7 +99,6 @@ def test_signal_sensor_value(hass, key, status_key, value) -> None:
         "satellites",
         "rtk_quality_pct",
         "gps_quality",
-        "rssi",
         "rsrp",
         "rsrq",
         "signal_quality_pct",

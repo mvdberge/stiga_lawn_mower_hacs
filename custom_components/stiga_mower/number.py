@@ -20,7 +20,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import StigaConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_constants import CUTTING_HEIGHTS_MM
 
@@ -120,8 +120,11 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
             model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
             serial_number=a.get("serial_number") or "",
         )
-        if fw := a.get("firmware_version"):
+        hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+        if fw:
             info["sw_version"] = fw
+        if hw:
+            info["hw_version"] = hw
         if mac := a.get("mac_address"):
             info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
         return info

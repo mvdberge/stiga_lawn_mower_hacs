@@ -63,6 +63,7 @@
       "battery_remaining":   { "name": "Remaining Capacity" },
       "cutting_height":      { "name": "Cutting Height" },
       "total_work_time":     { "name": "Total Work Time" },
+      "dock_firmware":       { "name": "Dock Firmware" },
       "garden_area":         { "name": "Garden Area" },
       "zone_count":          { "name": "Zones" },
       "obstacle_count":      { "name": "Obstacles" },

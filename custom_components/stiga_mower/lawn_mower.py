@@ -33,6 +33,7 @@ from .const import (
     ATTR_WORKING_DAYTIMES_ON,
     DOMAIN,
     ERROR_INFO_CODES,
+    split_firmware_version,
 )
 from .coordinator import StigaDataUpdateCoordinator
 
@@ -204,8 +205,11 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
             serial_number=a.get("serial_number") or "",
         )
-        if fw := a.get("firmware_version"):
+        hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+        if fw:
             info["sw_version"] = fw
+        if hw:
+            info["hw_version"] = hw
         if mac := a.get("mac_address"):
             info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
         return info

@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.stiga_mower.coordinator import (
     StigaDataUpdateCoordinator,
+    _enrich_status_from_device,
     _merge_live_into_status,
     _merge_sticky_live,
 )
@@ -90,6 +91,34 @@ def test_merge_keeps_rest_charging_when_mqtt_has_no_status_type() -> None:
     # A partial MQTT frame (e.g. position-only) must not flip the flag.
     out = _merge_live_into_status({"battery_charging": True}, {"current_zone": 2})
     assert out["battery_charging"] is True
+
+
+def test_enrich_status_surfaces_dock_firmware_separately() -> None:
+    # Robot firmware lives at attributes.firmware_version; the docking
+    # station has its own version under settings[0].docking_version, and
+    # the two must not be conflated.
+    status: dict = {}
+    device = {
+        "attributes": {
+            "firmware_version": "0.2.15.0.0.2.15.0.0.0.1.11",
+            "settings": [
+                {
+                    "parsedSettings": {"cutting_height": "50mm"},
+                    "docking_version": "0.0.3.57",
+                }
+            ],
+        }
+    }
+    _enrich_status_from_device(status, device)
+    assert status["dock_firmware"] == "0.0.3.57"
+    assert status["cutting_height_mm"] == 50
+
+
+def test_enrich_status_omits_dock_firmware_when_missing() -> None:
+    status: dict = {}
+    device = {"attributes": {"settings": [{"parsedSettings": {}}]}}
+    _enrich_status_from_device(status, device)
+    assert "dock_firmware" not in status
 
 
 def test_merge_passthrough_total_work_time() -> None:

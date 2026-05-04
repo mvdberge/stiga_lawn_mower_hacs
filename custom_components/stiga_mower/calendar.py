@@ -20,7 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from . import StigaConfigEntry
 from . import mqtt_constants as mc
-from .const import DOMAIN
+from .const import DOMAIN, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_messages import pack_schedule
 
@@ -102,8 +102,11 @@ class StigaCalendar(CoordinatorEntity[StigaDataUpdateCoordinator], CalendarEntit
             model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
             serial_number=a.get("serial_number") or "",
         )
-        if fw := a.get("firmware_version"):
+        hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+        if fw:
             info["sw_version"] = fw
+        if hw:
+            info["hw_version"] = hw
         if mac := a.get("mac_address"):
             info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
         return info

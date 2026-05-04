@@ -29,7 +29,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import StigaConfigEntry
-from .const import DOMAIN
+from .const import DOMAIN, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
 
 PARALLEL_UPDATES = 1
@@ -156,6 +156,16 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         translation_key="total_work_time",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
+    ),
+    # Docking-station firmware (`attributes.settings[0].docking_version`).
+    # Tracked separately from the robot's own `firmware_version` because the
+    # cloud reports them in unrelated fields.
+    StigaSensorDescription(
+        key="dock_firmware",
+        status_key="dock_firmware",
+        translation_key="dock_firmware",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
     ),
     # Static perimeter sensors – one-shot values fetched at setup from the
     # undocumented /api/perimeters endpoint. Unavailable when /perimeters
@@ -345,8 +355,11 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
             model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
             serial_number=a.get("serial_number") or "",
         )
-        if fw := a.get("firmware_version"):
+        hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+        if fw:
             info["sw_version"] = fw
+        if hw:
+            info["hw_version"] = hw
         if mac := a.get("mac_address"):
             info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
         return info

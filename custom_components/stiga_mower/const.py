@@ -57,6 +57,25 @@ ATTR_ZONE_COUNT = "zone_count"
 ATTR_OBSTACLE_COUNT = "obstacle_count"
 ATTR_OBSTACLE_AREA = "obstacle_area_m2"
 
+
+def split_firmware_version(raw: str | None) -> tuple[str | None, str | None, str | None]:
+    """Split a STIGA REST `firmware_version` string into (hardware, firmware, build).
+
+    The cloud serialises the three protobuf VERSION fields by joining them
+    with dots, so a 12-segment string like ``"0.2.15.0.0.2.15.0.0.0.1.11"``
+    decodes to ``hardware="0.2.15.0"``, ``firmware="0.2.15.0"``,
+    ``build="0.0.1.11"`` (per matthewgream/stiga-api ``decodeVersion``).
+    For shorter strings we return the input as the firmware value and leave
+    hardware/build unset, since we cannot reliably split them.
+    """
+    if not raw:
+        return None, None, None
+    parts = raw.split(".")
+    if len(parts) == 12 and all(p.isdigit() for p in parts):
+        return ".".join(parts[0:4]), ".".join(parts[4:8]), ".".join(parts[8:12])
+    return None, raw, None
+
+
 # Error / status info codes. Cross-checked against
 # https://github.com/matthewgream/stiga-api (ROBOT_STATUS_INFO_CODES).
 ERROR_INFO_CODES: dict[int, str] = {

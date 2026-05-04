@@ -426,11 +426,18 @@ def _enrich_status_from_device(status: dict, device: dict) -> None:
 
     settings = attrs.get("settings")
     if isinstance(settings, list) and settings:
-        parsed = (settings[0] or {}).get("parsedSettings") or {}
+        first = settings[0] or {}
+        parsed = first.get("parsedSettings") or {}
         ch = parsed.get("cutting_height")
         if isinstance(ch, str) and ch.lower().endswith("mm"):
             with contextlib.suppress(ValueError):
                 status["cutting_height_mm"] = int(ch[:-2])
+        # Docking-station firmware lives next to `parsedSettings`, not on the
+        # robot itself — surface it as a separate sensor so it does not get
+        # conflated with the robot's `firmware_version`.
+        dv = first.get("docking_version")
+        if isinstance(dv, str) and dv:
+            status["dock_firmware"] = dv
 
 
 def _extract_model_name(extended: dict) -> dict:

@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.2.2] - 2026-05-04
+
+### Fixed
+
+- Robot firmware version is no longer shown as the concatenated 12-segment cloud string. The REST `firmware_version` is split into its three sub-versions (hardware, firmware, build) and only the firmware part is surfaced as `sw_version`; the hardware part is exposed as `hw_version` (matches matthewgream/stiga-api `decodeVersion`).
+
+### Added
+
+- New diagnostic sensor `dock_firmware` exposing the docking-station firmware (`attributes.settings[0].docking_version`) so it is no longer conflated with the robot's own firmware. Disabled by default.
+
 ## [2.2.1] - 2026-05-04
 
 ### Added

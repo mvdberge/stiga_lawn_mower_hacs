@@ -121,11 +121,11 @@ def test_enrich_status_omits_dock_firmware_when_missing() -> None:
     assert "dock_firmware" not in status
 
 
-def test_merge_passthrough_total_work_time() -> None:
-    # REST `/api/garage` reports total_work_time=0 even when MQTT has the
-    # real value (captured 2026-04-30: REST=0, MQTT field 17.9 = 4461 min).
-    out = _merge_live_into_status({"total_work_time": 0}, {"total_work_time": 4461})
-    assert out["total_work_time"] == 4461
+def test_merge_passthrough_battery_remaining() -> None:
+    # MQTT field 17.9 (decoded as `battery_remaining` mAh from 2.2.4 onwards)
+    # must override any stale REST-derived value of the same key.
+    out = _merge_live_into_status({"battery_remaining": 4485}, {"battery_remaining": 4645})
+    assert out["battery_remaining"] == 4645
 
 
 # ---------------------------------------------------------------- _merge_sticky_live
@@ -139,7 +139,7 @@ def test_sticky_live_carries_telemetry_across_partial_frames() -> None:
         "status_type": "MOWING",
         "battery_level": 83,
         "battery_temp_c": 28.4,
-        "total_work_time": 4461,
+        "battery_remaining": 4150,
         "rsrp": -94,
         "satellites": 32,
     }
@@ -156,7 +156,7 @@ def test_sticky_live_carries_telemetry_across_partial_frames() -> None:
     # Sticky telemetry persists
     assert merged["battery_level"] == 83
     assert merged["battery_temp_c"] == 28.4
-    assert merged["total_work_time"] == 4461
+    assert merged["battery_remaining"] == 4150
     assert merged["rsrp"] == -94
     assert merged["satellites"] == 32
 
@@ -225,17 +225,17 @@ def test_status_push_merges_into_statuses(coordinator: StigaDataUpdateCoordinato
     assert merged["has_data"] is True
 
 
-def test_status_push_partial_frame_keeps_total_work_time(
+def test_status_push_partial_frame_keeps_battery_remaining(
     coordinator: StigaDataUpdateCoordinator,
 ) -> None:
     # Replays the captured pattern: full frame followed by a mowing-only
-    # partial frame. total_work_time must not flicker back to REST's 0.
+    # partial frame. Sticky battery telemetry must not flicker.
     coordinator._on_mqtt_status(
         "MAC1",
         {
             "status_type": "MOWING",
             "battery_level": 83,
-            "total_work_time": 4461,
+            "battery_remaining": 4150,
             "rsrp": -94,
         },
     )
@@ -248,7 +248,7 @@ def test_status_push_partial_frame_keeps_total_work_time(
         },
     )
     merged = coordinator.data["statuses"]["u1"]
-    assert merged["total_work_time"] == 4461
+    assert merged["battery_remaining"] == 4150
     assert merged["battery_level"] == 83
     assert merged["rsrp"] == -94
     assert merged["current_zone"] == 2

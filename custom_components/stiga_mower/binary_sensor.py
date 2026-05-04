@@ -111,7 +111,7 @@ BINARY_SENSOR_DESCRIPTIONS: tuple[StigaBinarySensorDescription, ...] = (
     StigaBinarySensorDescription(
         key="is_docked",
         translation_key="is_docked",
-        device_class=BinarySensorDeviceClass.OCCUPANCY,
+        device_class=BinarySensorDeviceClass.PRESENCE,
         status_key="is_docked",
         source="status",
     ),

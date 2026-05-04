@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.2.4] - 2026-05-04
+
+### Fixed
+
+- Removed the **`total_work_time`** sensor — it was sourced from MQTT STATUS field 17.9, which we now believe to be live `battery_remaining_capacity_mAh`, not a cumulative work-time counter. Evidence: the value is a float that fluctuates with battery state, lives inside the BATTERY sub-message alongside capacity/level/temp/current, and matches REST `remainingCapacity` in magnitude. matthewgream's reference decoder does not label that field at all, so the previous "total work time" reading was an unfounded guess from a single capture.
+- MQTT field 17.9 now feeds the existing **`battery_remaining`** sensor (mAh, integer), which previously only had stale REST values.
+
+### Changed
+
+- The **`Angedockt`** binary sensor (`is_docked`) is now reported with `device_class: presence` instead of `occupancy`. State labels change from "Belegt/Frei" to "Zuhause/Abwesend".
+
 ## [2.2.3] - 2026-05-04
 
 ### Changed

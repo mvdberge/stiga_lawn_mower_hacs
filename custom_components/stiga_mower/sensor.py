@@ -150,13 +150,6 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
     ),
-    StigaSensorDescription(
-        key="total_work_time",
-        status_key="total_work_time",
-        translation_key="total_work_time",
-        state_class=SensorStateClass.TOTAL_INCREASING,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
     # Docking-station firmware (`attributes.settings[0].docking_version`).
     # Tracked separately from the robot's own `firmware_version` because the
     # cloud reports them in unrelated fields.

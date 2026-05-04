@@ -62,7 +62,6 @@
       "battery_capacity":    { "name": "Batteriekapazität" },
       "battery_remaining":   { "name": "Verbleibende Kapazität" },
       "cutting_height":      { "name": "Schnitthöhe" },
-      "total_work_time":     { "name": "Gesamtarbeitszeit" },
       "dock_firmware":       { "name": "Firmware Ladestation" },
       "garden_area":         { "name": "Gartenfläche" },
       "zone_count":          { "name": "Zonen" },

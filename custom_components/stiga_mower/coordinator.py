@@ -303,7 +303,7 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "battery_voltage",
     "battery_current",
     "battery_temp_c",
-    "total_work_time",
+    "battery_remaining",
     "info_label",
     "info_sensor",
     "operable",
@@ -328,7 +328,7 @@ _STICKY_LIVE_FIELDS = frozenset(
         "battery_temp_c",
         "battery_current",
         "battery_voltage",
-        "total_work_time",
+        "battery_remaining",
         "satellites",
         "rtk_fix_type",
         "rtk_quality_pct",
@@ -414,15 +414,12 @@ def _enrich_status_from_device(status: dict, device: dict) -> None:
     """Merge sensor-relevant fields from /api/garage device attributes into status.
 
     The undocumented `/api/garage` endpoint returns attributes like
-    `total_work_time` and `parsedSettings.cutting_height` that the documented
-    `/api/garage/integration` does not. When those fields are present we
-    surface them to the entity layer; otherwise the sensor goes unavailable.
+    `parsedSettings.cutting_height` and `settings[0].docking_version` that
+    the documented `/api/garage/integration` does not. When those fields
+    are present we surface them to the entity layer; otherwise the sensor
+    goes unavailable.
     """
     attrs = device.get("attributes") or {}
-
-    twt = attrs.get("total_work_time")
-    if isinstance(twt, (int, float)):
-        status["total_work_time"] = int(twt)
 
     settings = attrs.get("settings")
     if isinstance(settings, list) and settings:

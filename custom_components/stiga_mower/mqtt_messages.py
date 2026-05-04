@@ -60,11 +60,16 @@ def decode_status(payload: bytes) -> dict[str, Any]:
     if isinstance(battery := raw.get(17), dict):
         _set_if_present(out, "battery_capacity_mah", battery, 1)
         _set_if_present(out, "battery_level", battery, 2)
-        # 17.7 = battery temperature °C (float), 17.9 = total work time (minutes),
-        # 17.12 = battery current A (negative = discharging)
+        # 17.7 = battery temperature °C (float), 17.12 = battery current A
+        # (negative = discharging). Field 17.9 is a float (e.g. 4645.5) that
+        # tracks closely with REST `remainingCapacity` (mAh) and changes with
+        # battery state — surface it as the live `battery_remaining` value.
+        # (Until 2.2.3 this was misread as "total work time"; matthewgream's
+        # decoder does not label it, so the previous guess was unfounded.)
         if (temp := battery.get(7)) is not None and isinstance(temp, float):
             out["battery_temp_c"] = round(temp, 1)
-        _set_if_present(out, "total_work_time", battery, 9)
+        if (rem := battery.get(9)) is not None:
+            out["battery_remaining"] = int(rem) if isinstance(rem, float) else rem
         if (current := battery.get(12)) is not None and isinstance(current, float):
             out["battery_current"] = round(current, 3)
 

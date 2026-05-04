@@ -29,7 +29,6 @@ from .const import (
     ATTR_PRODUCT_CODE,
     ATTR_RAIN_SENSOR,
     ATTR_SERIAL_NUMBER,
-    ATTR_TOTAL_WORK_TIME,
     ATTR_WORKING_DAYTIMES_ON,
     DOMAIN,
     ERROR_INFO_CODES,
@@ -310,8 +309,6 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         # only present when that endpoint is reachable, otherwise omitted.
         if (last_used := a.get("last_used")) is not None:
             attrs[ATTR_LAST_USED] = last_used
-        if (twt := a.get("total_work_time")) is not None:
-            attrs[ATTR_TOTAL_WORK_TIME] = twt
         if (base := a.get("base_uuid")) is not None:
             attrs[ATTR_BASE_UUID] = base
         if isinstance(state := a.get("state"), dict) and (lte := state.get("lteVersion")):

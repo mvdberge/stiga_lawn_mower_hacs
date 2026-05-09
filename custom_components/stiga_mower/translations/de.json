@@ -65,6 +65,7 @@
       "dock_firmware":       { "name": "Firmware Ladestation" },
       "garden_area":         { "name": "Gartenfläche" },
       "zone_count":          { "name": "Zonen" },
+      "zone_area":           { "name": "Zone {zone_id} Fläche" },
       "obstacle_count":      { "name": "Hindernisse" },
       "obstacle_area":       { "name": "Hindernisfläche" },
       "current_zone":        { "name": "Aktuelle Zone" },

@@ -455,6 +455,17 @@ def _extract_perimeter(perimeter: dict) -> dict:
     zones = preview.get("zones") or {}
     if (zn := zones.get("num")) is not None:
         out["zone_count"] = zn
+    elements = zones.get("elements")
+    if isinstance(elements, list) and elements:
+        out["zone_elements"] = [
+            {
+                "id": e["id"],
+                "area_m2": round(e["m2Area"], 2),
+                "num_points": e["numPoints"],
+            }
+            for e in elements
+            if isinstance(e, dict) and "id" in e and "m2Area" in e and "numPoints" in e
+        ]
     obstacles = preview.get("obstacles") or {}
     if (obn := obstacles.get("num")) is not None:
         out["obstacle_count"] = obn

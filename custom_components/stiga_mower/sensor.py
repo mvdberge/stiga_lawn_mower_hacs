@@ -60,6 +60,13 @@ class StigaSensorDescription(SensorEntityDescription):
     source: str = "status"
 
 
+_ZONE_AREA_KEY_PREFIX = "zone_area_"
+
+
+def _zone_area_key(zone_id: int) -> str:
+    return f"{_ZONE_AREA_KEY_PREFIX}{zone_id}"
+
+
 SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     # Primary user-facing sensor – no category, enabled by default.
     StigaSensorDescription(
@@ -268,7 +275,7 @@ async def async_setup_entry(
 
     @callback
     def _add_new_entities() -> None:
-        new_entities: list[StigaSensor] = []
+        new_entities: list[StigaSensor | StigaZoneAreaSensor] = []
         for device in coordinator.data.get("devices", []):
             uuid = _dev_uuid(device)
             if not uuid:
@@ -279,6 +286,14 @@ async def async_setup_entry(
                     continue
                 known.add(key)
                 new_entities.append(StigaSensor(coordinator, device, description))
+            # Dynamic per-zone area sensors — created once zone_elements arrive
+            elements = coordinator.data.get("meta", {}).get(uuid, {}).get("zone_elements") or []
+            for zone in elements:
+                zone_key = (uuid, _zone_area_key(zone["id"]))
+                if zone_key in known:
+                    continue
+                known.add(zone_key)
+                new_entities.append(StigaZoneAreaSensor(coordinator, device, zone["id"]))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -351,6 +366,92 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
             return self.coordinator.data.get("meta", {}).get(self._uuid, {}).get(desc.status_key)
         status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
         return status.get(desc.status_key)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        if self.entity_description.key != "zone_count":
+            return None
+        elements = self.coordinator.data.get("meta", {}).get(self._uuid, {}).get("zone_elements")
+        if not elements:
+            return None
+        return {f"zone_{e['id']}_area_m2": e["area_m2"] for e in elements}
+
+
+class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
+    """One sensor per zone showing its area in m²."""
+
+    _attr_has_entity_name = True
+    _attr_native_unit_of_measurement = UnitOfArea.SQUARE_METERS
+    _attr_device_class = SensorDeviceClass.AREA
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_suggested_display_precision = 0
+
+    def __init__(
+        self,
+        coordinator: StigaDataUpdateCoordinator,
+        device: dict,
+        zone_id: int,
+    ) -> None:
+        super().__init__(coordinator)
+        self._uuid = _dev_uuid(device)
+        self._zone_id = zone_id
+        self._attr_unique_id = f"stiga_{self._uuid}_zone_area_{zone_id}"
+        self._attr_translation_key = "zone_area"
+        self._attr_translation_placeholders = {"zone_id": str(zone_id)}
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        for d in self.coordinator.data.get("devices", []):
+            if _dev_uuid(d) == self._uuid:
+                a = d.get("attributes") or {}
+                meta = self.coordinator.data.get("meta", {}).get(self._uuid, {})
+                info = DeviceInfo(
+                    identifiers={(DOMAIN, self._uuid)},
+                    name=a.get("name") or self._uuid,
+                    manufacturer="STIGA",
+                    model=meta.get("model_name")
+                    or a.get("product_code")
+                    or a.get("device_type")
+                    or "",
+                    serial_number=a.get("serial_number") or "",
+                )
+                hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+                if fw:
+                    info["sw_version"] = fw
+                if hw and hw != fw:
+                    info["hw_version"] = hw
+                if mac := a.get("mac_address"):
+                    info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
+                return info
+        return DeviceInfo(identifiers={(DOMAIN, self._uuid)})
+
+    @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        elements = self.coordinator.data.get("meta", {}).get(self._uuid, {}).get("zone_elements")
+        return bool(elements and any(e["id"] == self._zone_id for e in elements))
+
+    @property
+    def native_value(self) -> float | None:
+        elements = self.coordinator.data.get("meta", {}).get(self._uuid, {}).get("zone_elements")
+        if not elements:
+            return None
+        for e in elements:
+            if e["id"] == self._zone_id:
+                return e["area_m2"]
+        return None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        elements = self.coordinator.data.get("meta", {}).get(self._uuid, {}).get("zone_elements")
+        if not elements:
+            return {}
+        for e in elements:
+            if e["id"] == self._zone_id:
+                return {"num_points": e["num_points"]}
+        return {}
 
 
 def _dev_uuid(device: dict) -> str:

@@ -9,6 +9,7 @@ import pytest
 from custom_components.stiga_mower.coordinator import (
     StigaDataUpdateCoordinator,
     _enrich_status_from_device,
+    _extract_perimeter,
     _merge_live_into_status,
     _merge_sticky_live,
 )
@@ -305,6 +306,70 @@ def test_publish_update_no_op_before_first_refresh(hass) -> None:
     assert c.data is None
     # State is buffered though, so the next regular refresh sees it.
     assert c._live_status["MAC1"]["status_type"] == "MOWING"
+
+
+# ---------------------------------------------------------------- _extract_perimeter
+
+
+def test_extract_perimeter_zone_elements() -> None:
+    perimeter = {
+        "data": {
+            "attributes": {
+                "preview": {
+                    "m2Area": 661.48,
+                    "zones": {
+                        "num": 3,
+                        "m2Area": 661.48,
+                        "elements": [
+                            {"id": 1, "m2Area": 108.94, "numPoints": 38},
+                            {"id": 2, "m2Area": 128.84, "numPoints": 49},
+                            {"id": 3, "m2Area": 5.46, "numPoints": 11},
+                        ],
+                    },
+                    "obstacles": {"num": 2, "m2Area": 12.5},
+                }
+            }
+        }
+    }
+    out = _extract_perimeter(perimeter)
+    assert out["zone_count"] == 3
+    assert out["garden_area_m2"] == 661.48
+    assert out["obstacle_count"] == 2
+    assert len(out["zone_elements"]) == 3
+    assert out["zone_elements"][0] == {"id": 1, "area_m2": 108.94, "num_points": 38}
+    assert out["zone_elements"][1] == {"id": 2, "area_m2": 128.84, "num_points": 49}
+    assert out["zone_elements"][2] == {"id": 3, "area_m2": 5.46, "num_points": 11}
+
+
+def test_extract_perimeter_no_zone_elements_when_empty() -> None:
+    perimeter = {
+        "data": {
+            "attributes": {
+                "preview": {
+                    "zones": {"num": 0, "elements": []},
+                }
+            }
+        }
+    }
+    out = _extract_perimeter(perimeter)
+    assert "zone_elements" not in out
+
+
+def test_extract_perimeter_zone_elements_area_rounded() -> None:
+    perimeter = {
+        "data": {
+            "attributes": {
+                "preview": {
+                    "zones": {
+                        "num": 1,
+                        "elements": [{"id": 1, "m2Area": 108.9412345, "numPoints": 5}],
+                    }
+                }
+            }
+        }
+    }
+    out = _extract_perimeter(perimeter)
+    assert out["zone_elements"][0]["area_m2"] == 108.94
 
 
 def test_push_for_unknown_mac_is_buffered_but_not_merged(

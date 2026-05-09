@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.3.0] - 2026-05-09
+
+### Added
+
+- **Per-zone area sensors** — one diagnostic sensor per zone (`Zone 1 Area`, `Zone 2 Area`, …) showing the mowed area in m², with `num_points` as an extra attribute. Sensors are created dynamically from the `/api/perimeters` response and appear as soon as perimeter data is available.
+- **Zone details as attributes** — the existing `Zones` sensor now exposes `zone_N_area_m2` as extra state attributes for a quick overview of all zone sizes.
+
 ## [2.2.4] - 2026-05-04
 
 ### Fixed

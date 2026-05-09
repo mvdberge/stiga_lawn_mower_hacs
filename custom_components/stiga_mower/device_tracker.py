@@ -30,22 +30,21 @@ from .coordinator import StigaDataUpdateCoordinator
 
 PARALLEL_UPDATES = 1
 
-# Earth radius for cm-to-degree conversion.  1 degree latitude ≈ 111 111 m.
+# 1 degree latitude ≈ 111 111 m.
 _M_PER_DEG_LAT = 111_111.0
-_CM_PER_M = 100.0
 
 
 def _offset_to_wgs84(
     base_lat: float,
     base_lon: float,
-    lat_offset_cm: float,
-    lon_offset_cm: float,
+    lat_offset_m: float,
+    lon_offset_m: float,
 ) -> tuple[float, float]:
-    """Convert (lat_offset_cm, lon_offset_cm) relative to (base_lat, base_lon)."""
-    d_lat = lat_offset_cm / _CM_PER_M / _M_PER_DEG_LAT
+    """Convert (lat_offset_m, lon_offset_m) relative to (base_lat, base_lon)."""
+    d_lat = lat_offset_m / _M_PER_DEG_LAT
     # 1° longitude shrinks with cos(lat)
     m_per_deg_lon = _M_PER_DEG_LAT * math.cos(math.radians(base_lat))
-    d_lon = lon_offset_cm / _CM_PER_M / m_per_deg_lon if m_per_deg_lon else 0.0
+    d_lon = lon_offset_m / m_per_deg_lon if m_per_deg_lon else 0.0
     return base_lat + d_lat, base_lon + d_lon
 
 
@@ -124,21 +123,15 @@ class StigaPositionTracker(CoordinatorEntity[StigaDataUpdateCoordinator], Tracke
         return info
 
     def _gps_offsets(self) -> tuple[float, float] | None:
-        """Return (lat_offset_cm, lon_offset_cm) from the latest STATUS frame, or None.
-
-        The STATUS frame (field 19) already carries GPS offsets in centimetres
-        relative to the dock.  They are merged into statuses[uuid] via
-        _MQTT_PASSTHROUGH_FIELDS, so there is no need to issue a separate
-        ROBOT_POSITION request.
-        """
-        status = self.coordinator.data.get("statuses", {}).get(self._uuid)
-        if not status:
+        """Return (lat_offset_m, lon_offset_m) from the latest ROBOT_POSITION frame, or None."""
+        pos = self.coordinator.data.get("live_position", {}).get(self._mac)
+        if not pos:
             return None
-        lat_cm = status.get("lat_offset_cm")
-        lon_cm = status.get("lon_offset_cm")
-        if lat_cm is None or lon_cm is None:
+        lat_m = pos.get("lat_offset_m")
+        lon_m = pos.get("lon_offset_m")
+        if lat_m is None or lon_m is None:
             return None
-        return lat_cm, lon_cm
+        return lat_m, lon_m
 
     def _base_position(self) -> tuple[float, float] | None:
         """Return (lat, lon) of the base station from REST garage data."""

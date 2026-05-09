@@ -63,8 +63,6 @@ def test_current_zone_none_when_not_in_status(hass) -> None:
     "key,status_key,value",
     [
         ("satellites", "satellites", 12),
-        ("rtk_quality_pct", "rtk_quality_pct", 95),
-        ("gps_quality", "gps_quality", "GOOD"),
     ],
 )
 def test_gps_sensor_value(hass, key, status_key, value) -> None:
@@ -81,7 +79,6 @@ def test_gps_sensor_value(hass, key, status_key, value) -> None:
     [
         ("rsrp", "rsrp", -80),
         ("rsrq", "rsrq", -10),
-        ("signal_quality_pct", "signal_quality_pct", 70),
     ],
 )
 def test_signal_sensor_value(hass, key, status_key, value) -> None:
@@ -97,11 +94,8 @@ def test_signal_sensor_value(hass, key, status_key, value) -> None:
     "key",
     [
         "satellites",
-        "rtk_quality_pct",
-        "gps_quality",
         "rsrp",
         "rsrq",
-        "signal_quality_pct",
     ],
 )
 def test_diagnostic_sensors_disabled_by_default(key) -> None:

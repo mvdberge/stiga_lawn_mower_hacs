@@ -71,11 +71,8 @@
       "zone_completed_pct":  { "name": "Zonenfortschritt" },
       "garden_completed_pct":{ "name": "Gartenfortschritt" },
       "satellites":          { "name": "GPS-Satelliten" },
-      "rtk_quality_pct":     { "name": "RTK-Qualität" },
-      "gps_quality":         { "name": "GPS-Qualität" },
       "rsrp":                { "name": "RSRP" },
-      "rsrq":                { "name": "RSRQ" },
-      "signal_quality_pct":  { "name": "Signalqualität" }
+      "rsrq":                { "name": "RSRQ" }
     },
     "binary_sensor": {
       "mqtt_connected":  { "name": "Cloud-Verbindung" },

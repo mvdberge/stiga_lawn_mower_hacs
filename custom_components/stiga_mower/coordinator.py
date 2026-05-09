@@ -46,10 +46,10 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         "meta":     { "<uuid>": { "model_name": "A 15v",
                                   "garden_area_m2": 656, ... }, ... },
         "mqtt_connected": bool,
-        "live_position": { "<uuid>": {"lat_offset_m": ..., ...} },
-        "live_settings": { "<uuid>": {...} },
-        "live_schedule": { "<uuid>": {...} },
-        "live_base_status": { "<base_uuid>": {...} },
+        "live_position": { "<mac>": {"lat_offset_m": ..., "lon_offset_m": ..., ...} },
+        "live_settings": { "<mac>": {...} },
+        "live_schedule": { "<mac>": {...} },
+        "live_base_status": { "<base_mac>": {...} },
     }
 
     The coordinator is push-driven for MQTT frames (each frame triggers
@@ -294,10 +294,7 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "zone_completed_pct",
     "garden_completed_pct",
     "satellites",
-    "gps_quality",
     "rtk_fix_type",
-    "rtk_quality_pct",
-    "signal_quality_pct",
     "rsrp",
     "rsrq",
     "battery_voltage",
@@ -331,13 +328,10 @@ _STICKY_LIVE_FIELDS = frozenset(
         "battery_remaining",
         "satellites",
         "rtk_fix_type",
-        "rtk_quality_pct",
-        "gps_quality",
         "network_kind",
         "network_type",
         "network_band",
         "rsrp",
-        "signal_quality_pct",
         "rsrq",
     }
 )

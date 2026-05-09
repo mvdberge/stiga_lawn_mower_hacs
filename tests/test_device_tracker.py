@@ -21,30 +21,30 @@ def test_zero_offsets_returns_base_position() -> None:
 
 def test_positive_lat_offset_moves_north() -> None:
     base_lat, base_lon = 53.0, 10.0
-    lat, lon = _offset_to_wgs84(base_lat, base_lon, lat_offset_cm=11111.0, lon_offset_cm=0.0)
-    # 11 111 cm = 111.11 m ≈ 0.001° north
+    lat, lon = _offset_to_wgs84(base_lat, base_lon, lat_offset_m=111.11, lon_offset_m=0.0)
+    # 111.11 m ≈ 0.001° north
     assert lat > base_lat
     assert lon == pytest.approx(base_lon, abs=1e-6)
 
 
 def test_positive_lon_offset_moves_east() -> None:
     base_lat, base_lon = 53.0, 10.0
-    lat, lon = _offset_to_wgs84(base_lat, base_lon, lat_offset_cm=0.0, lon_offset_cm=11111.0)
+    lat, lon = _offset_to_wgs84(base_lat, base_lon, lat_offset_m=0.0, lon_offset_m=111.11)
     assert lon > base_lon
     assert lat == pytest.approx(base_lat, abs=1e-6)
 
 
 def test_negative_offsets_move_southwest() -> None:
     base_lat, base_lon = 53.0, 10.0
-    lat, lon = _offset_to_wgs84(base_lat, base_lon, lat_offset_cm=-5000.0, lon_offset_cm=-5000.0)
+    lat, lon = _offset_to_wgs84(base_lat, base_lon, lat_offset_m=-50.0, lon_offset_m=-50.0)
     assert lat < base_lat
     assert lon < base_lon
 
 
 def test_lon_scale_depends_on_latitude() -> None:
-    # At the equator cos(0°)=1; at 60° cos(60°)=0.5, so same cm shift = double deg shift.
-    _, lon_eq = _offset_to_wgs84(0.0, 0.0, 0.0, 10_000.0)
-    _, lon_60 = _offset_to_wgs84(60.0, 0.0, 0.0, 10_000.0)
+    # At the equator cos(0°)=1; at 60° cos(60°)=0.5, so same m shift = double deg shift.
+    _, lon_eq = _offset_to_wgs84(0.0, 0.0, 0.0, 100.0)
+    _, lon_60 = _offset_to_wgs84(60.0, 0.0, 0.0, 100.0)
     assert lon_60 == pytest.approx(lon_eq * 2, rel=1e-3)
 
 
@@ -73,13 +73,10 @@ def _make_tracker(hass, *, base_lat=None, base_lon=None, position_frame=None):
             },
         }
     ]
-    # GPS offsets come from the MQTT STATUS frame, which is merged into
-    # statuses[uuid] via _MQTT_PASSTHROUGH_FIELDS.  Inject them directly
-    # into rest_statuses so _gps_offsets() can find them.
-    status: dict = {"has_data": True}
+    # GPS offsets come from the MQTT ROBOT_POSITION frame, keyed by MAC in live_position.
     if position_frame is not None:
-        status.update(position_frame)
-    c.async_set_updated_data(c._build_data(rest_statuses={"u1": status}))
+        c._live_position["MAC1"] = position_frame
+    c.async_set_updated_data(c._build_data(rest_statuses={"u1": {"has_data": True}}))
 
     device = c.data["devices"][0]
     tracker = StigaPositionTracker(c, device)
@@ -97,7 +94,7 @@ def test_tracker_unavailable_when_no_position_frame(hass) -> None:
 def test_tracker_unavailable_when_no_base_position(hass) -> None:
     t = _make_tracker(
         hass,
-        position_frame={"lat_offset_cm": 0.0, "lon_offset_cm": 0.0},
+        position_frame={"lat_offset_m": 0.0, "lon_offset_m": 0.0},
     )
     assert t.latitude is None
     assert t.longitude is None
@@ -111,7 +108,7 @@ def test_tracker_lat_lon_with_zero_offset(hass) -> None:
         hass,
         base_lat=53.0,
         base_lon=10.0,
-        position_frame={"lat_offset_cm": 0.0, "lon_offset_cm": 0.0},
+        position_frame={"lat_offset_m": 0.0, "lon_offset_m": 0.0},
     )
     assert t.available is True
     assert t.latitude == pytest.approx(53.0, abs=1e-5)
@@ -123,7 +120,7 @@ def test_tracker_lat_moves_with_offset(hass) -> None:
         hass,
         base_lat=53.0,
         base_lon=10.0,
-        position_frame={"lat_offset_cm": 111_111.0, "lon_offset_cm": 0.0},
+        position_frame={"lat_offset_m": 1111.11, "lon_offset_m": 0.0},
     )
     assert t.latitude is not None
     assert t.latitude > 53.0
@@ -134,7 +131,7 @@ def test_tracker_lon_moves_with_offset(hass) -> None:
         hass,
         base_lat=53.0,
         base_lon=10.0,
-        position_frame={"lat_offset_cm": 0.0, "lon_offset_cm": 111_111.0},
+        position_frame={"lat_offset_m": 0.0, "lon_offset_m": 1111.11},
     )
     assert t.longitude is not None
     assert t.longitude > 10.0

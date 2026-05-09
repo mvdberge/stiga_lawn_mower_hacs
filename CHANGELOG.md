@@ -1,24 +1,36 @@
 # Changelog
 
+## [2.3.5] - 2026-05-09
+
+### Fixed
+
+- **Further improvements to caching behavior** — additional adjustments to stabilize sensor availability during API errors.
+
+## [2.3.4] - 2026-05-09
+
+### Fixed
+
+- **Sensors become unavailable after 10 minutes of persistent REST errors** — the `_last_rest_success` timestamp was incorrectly updated on API errors, preventing cached data from being marked stale after 10 minutes. Now the timestamp is only updated on successful fetches, so entities correctly become unavailable during continuous failures.
+
 ## [2.3.3] - 2026-05-09
 
 ### Fixed
 
-- **`schedule_enabled`-Switch immer „Nicht verfügbar"** — beim MQTT-Verbindungsaufbau wurde zwar ein `SETTINGS_REQUEST` gesendet, aber kein `SCHEDULING_SETTINGS_REQUEST`. Dadurch blieb `live_schedule` leer und der Schedule-Switch dauerhaft unavailable. Jetzt wird bei jeder neuen MQTT-Session auch der Schedule vom Roboter abgefragt.
+- **`schedule_enabled` switch always "Unavailable"** — during MQTT connection setup, a `SETTINGS_REQUEST` was sent but no `SCHEDULING_SETTINGS_REQUEST`. This left `live_schedule` empty and the schedule switch permanently unavailable. Now the schedule is queried from the robot on every new MQTT session.
 
 ## [2.3.2] - 2026-05-09
 
 ### Added
 
-- **Mähplan-Schalter** — neuer Switch-Entität „Mähplan" (`schedule_enabled`) zum Umschalten zwischen manuellem und geplantem Betrieb. Sendet nur das `enabled`-Flag via MQTT (SCHEDULING_SETTINGS_UPDATE field 1), ohne den gespeicherten Zeitplan-Blob auf dem Roboter zu verändern. Entspricht dem „manuell/geplant"-Toggle in der STIGA GO App.
+- **Mowing schedule switch** — new switch entity "Mowing Schedule" (`schedule_enabled`) to toggle between manual and scheduled operation. Sends only the `enabled` flag via MQTT (SCHEDULING_SETTINGS_UPDATE field 1), without modifying the stored schedule blob on the robot. Corresponds to the "manual/scheduled" toggle in the STIGA GO app.
 
 ## [2.3.1] - 2026-05-09
 
 ### Fixed
 
-- **REST-Ausfälle markieren Sensoren nicht mehr als „Nicht verfügbar"** — bei Timeouts oder Fehlern der STIGA Cloud API (30–90 s Verzögerung oder keine Antwort) behält die Integration den zuletzt bekannten Zustand bei, statt alle Entitäten sofort auf „Unavailable" zu setzen. Sensoren bleiben sichtbar, bis die Cloud länger als 10 Minuten nicht erreichbar ist.
-- **MQTT-Sensoren bleiben unabhängig von REST-Fehlern verfügbar** — Felder, die über MQTT geliefert werden (aktuelle Zone, Prozentsatz, RSSI usw.), bleiben verfügbar, solange MQTT-Frames eintreffen, auch wenn der REST-Poll fehlschlägt.
-- **Exponentieller Backoff beim MQTT-Reconnect** — bei wiederholten Verbindungsfehlern zum Broker wächst die Wartezeit von 5 s auf maximal 5 Minuten, statt in einer engen Schleife zu wiederholen.
+- **REST failures no longer mark sensors as "Unavailable"** — on timeouts or errors from the STIGA Cloud API (30–90 s delays or no response), the integration retains the last known state instead of immediately setting all entities to "Unavailable". Sensors remain visible until the cloud has been unreachable for more than 10 minutes.
+- **MQTT sensors remain available independently of REST errors** — fields delivered via MQTT (current zone, percentage, RSSI, etc.) remain available as long as MQTT frames are received, even if the REST poll fails.
+- **Exponential backoff on MQTT reconnect** — on repeated connection failures to the broker, the wait time grows from 5 s to a maximum of 5 minutes, instead of retrying in a tight loop.
 
 ## [2.3.0] - 2026-05-09
 
@@ -36,7 +48,7 @@
 
 ### Changed
 
-- The **`Angedockt`** binary sensor (`is_docked`) is now reported with `device_class: presence` instead of `occupancy`. State labels change from "Belegt/Frei" to "Zuhause/Abwesend".
+- The **`Docked`** binary sensor (`is_docked`) is now reported with `device_class: presence` instead of `occupancy`. State labels change from "Occupied/Free" to "Home/Away".
 
 ## [2.2.3] - 2026-05-04
 
@@ -84,7 +96,7 @@
 ### Fixed
 
 - `battery_level` no longer overwritten by field 18.4.1, which is an unknown incrementing counter (not a percentage). Correct value comes from field 17.2.
-- `battery_charging` (`Lädt`) no longer incorrectly set to `True` while mowing. Field 18.4.3 is a constant flag (not a charging boolean); charging state is now derived exclusively from `status_type == CHARGING`.
+- `battery_charging` (`Charging`) no longer incorrectly set to `True` while mowing. Field 18.4.3 is a constant flag (not a charging boolean); charging state is now derived exclusively from `status_type == CHARGING`.
 
 ---
 

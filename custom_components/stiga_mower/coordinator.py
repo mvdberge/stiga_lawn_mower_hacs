@@ -255,6 +255,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                 else:
                     if devices:
                         self._devices = devices
+                self._last_rest_success = dt_util.utcnow()
 
                 statuses: dict[str, dict] = {}
                 previous = (self.data or {}).get("statuses", {})

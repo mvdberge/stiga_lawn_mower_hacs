@@ -167,7 +167,14 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
     def available(self) -> bool:
         if not self.coordinator.data:
             return False
-        return self._current_value() is not None
+        # Available when REST data is fresh (entity can display cached values)
+        # AND MQTT is connected (can send settings updates)
+        if not self.coordinator.rest_data_fresh:
+            return False
+        mqtt = self.coordinator.mqtt
+        if mqtt is None or not mqtt.connected:
+            return False
+        return True
 
     def _current_value(self) -> bool | None:
         key = self.entity_description.settings_key
@@ -249,15 +256,22 @@ class StigaScheduleSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchE
 
     def _schedule_enabled(self) -> bool | None:
         sched = self.coordinator.data.get("live_schedule", {}).get(self._mac)
-        if sched is None:
-            return None
-        return sched.get("enabled")
+        if sched is not None:
+            return sched.get("enabled")
+        return None
 
     @property
     def available(self) -> bool:
         if not self.coordinator.data:
             return False
-        return self._schedule_enabled() is not None
+        # Available when REST data is fresh (entity can display cached values)
+        # AND MQTT is connected (can send schedule updates)
+        if not self.coordinator.rest_data_fresh:
+            return False
+        mqtt = self.coordinator.mqtt
+        if mqtt is None or not mqtt.connected:
+            return False
+        return True
 
     @property
     def is_on(self) -> bool | None:

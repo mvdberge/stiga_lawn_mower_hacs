@@ -96,7 +96,7 @@ async def async_setup_entry(
 
     @callback
     def _add_new_entities() -> None:
-        new_entities: list[StigaSwitch] = []
+        new_entities: list[StigaSwitch | StigaScheduleSwitch] = []
         for device in coordinator.data.get("devices", []):
             uuid = _dev_uuid(device)
             if not uuid:
@@ -107,6 +107,10 @@ async def async_setup_entry(
                     continue
                 known.add(key)
                 new_entities.append(StigaSwitch(coordinator, device, description))
+            sched_key = (uuid, "schedule_enabled")
+            if sched_key not in known:
+                known.add(sched_key)
+                new_entities.append(StigaScheduleSwitch(coordinator, device))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -187,6 +191,86 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
             raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+
+    async def async_turn_on(self, **kwargs) -> None:
+        await self._send(True)
+
+    async def async_turn_off(self, **kwargs) -> None:
+        await self._send(False)
+
+
+class StigaScheduleSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
+    """Switch that enables or disables the mowing schedule (manual vs. planned mode).
+
+    Reads the ``enabled`` flag from ``live_schedule[mac]`` and sends only field 1
+    of SCHEDULING_SETTINGS_UPDATE so the stored time-window blob is unchanged.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "schedule_enabled"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self,
+        coordinator: StigaDataUpdateCoordinator,
+        device: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        attrs = device.get("attributes") or {}
+        self._uuid = attrs.get("uuid", "")
+        self._mac = attrs.get("mac_address", "")
+        self._attr_unique_id = f"stiga_{self._uuid}_schedule_enabled"
+
+    def _device_attrs(self) -> dict:
+        for d in self.coordinator.data.get("devices", []):
+            if _dev_uuid(d) == self._uuid:
+                return d.get("attributes") or {}
+        return {}
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        a = self._device_attrs()
+        meta = self.coordinator.data.get("meta", {}).get(self._uuid, {})
+        info = DeviceInfo(
+            identifiers={(DOMAIN, self._uuid)},
+            name=a.get("name") or self._uuid,
+            manufacturer="STIGA",
+            model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
+            serial_number=a.get("serial_number") or "",
+        )
+        hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+        if fw:
+            info["sw_version"] = fw
+        if hw and hw != fw:
+            info["hw_version"] = hw
+        if mac := a.get("mac_address"):
+            info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
+        return info
+
+    def _schedule_enabled(self) -> bool | None:
+        sched = self.coordinator.data.get("live_schedule", {}).get(self._mac)
+        if sched is None:
+            return None
+        return sched.get("enabled")
+
+    @property
+    def available(self) -> bool:
+        if not self.coordinator.data:
+            return False
+        return self._schedule_enabled() is not None
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._schedule_enabled()
+
+    async def _send(self, value: bool) -> None:
+        mqtt = self.coordinator.mqtt
+        if mqtt is None or not mqtt.connected or not self._mac:
+            raise HomeAssistantError("Cannot set schedule mode: MQTT not connected")
+        try:
+            await mqtt.cmd_schedule_set_enabled(self._mac, value)
+        except Exception as err:
+            raise HomeAssistantError(f"Could not set schedule mode: {err}") from err
 
     async def async_turn_on(self, **kwargs) -> None:
         await self._send(True)

@@ -99,7 +99,8 @@
       "push_notifications":     { "name": "Push-Benachrichtigungen" },
       "obstacle_notifications": { "name": "Hindernis-Benachrichtigungen" },
       "smart_cutting_height":   { "name": "Smarte Schnitthöhe" },
-      "long_exit":              { "name": "Langer Ausgang" }
+      "long_exit":              { "name": "Langer Ausgang" },
+      "schedule_enabled":       { "name": "Mähplan" }
     },
     "select": {
       "cutting_mode": {

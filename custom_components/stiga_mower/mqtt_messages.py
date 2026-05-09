@@ -302,6 +302,16 @@ def unpack_schedule(blob: bytes) -> list[dict[str, Any]]:
     return days
 
 
+def encode_schedule_enabled(enabled: bool) -> bytes:
+    """Build a SCHEDULING_SETTINGS_UPDATE payload that only toggles the enabled flag.
+
+    Sends field 1 (enabled) without touching field 2 (the schedule blob), so the
+    time-window data already stored on the robot is left unchanged.  This mirrors
+    what the STIGA GO app does when switching between manual and scheduled mode.
+    """
+    return encode_command(mc.ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE, {1: int(enabled)})
+
+
 def pack_schedule(days: list[dict[str, Any]]) -> bytes:
     """Encode a list of 7 day-dicts back into the schedule blob.
 

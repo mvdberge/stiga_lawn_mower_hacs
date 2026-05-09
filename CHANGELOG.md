@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.2] - 2026-05-09
+
+### Added
+
+- **Mähplan-Schalter** — neuer Switch-Entität „Mähplan" (`schedule_enabled`) zum Umschalten zwischen manuellem und geplantem Betrieb. Sendet nur das `enabled`-Flag via MQTT (SCHEDULING_SETTINGS_UPDATE field 1), ohne den gespeicherten Zeitplan-Blob auf dem Roboter zu verändern. Entspricht dem „manuell/geplant"-Toggle in der STIGA GO App.
+
 ## [2.3.1] - 2026-05-09
 
 ### Fixed

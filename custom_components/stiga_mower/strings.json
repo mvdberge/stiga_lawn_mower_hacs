@@ -102,7 +102,8 @@
       "push_notifications":     { "name": "Push Notifications" },
       "obstacle_notifications": { "name": "Obstacle Notifications" },
       "smart_cutting_height":   { "name": "Smart Cutting Height" },
-      "long_exit":              { "name": "Long Exit" }
+      "long_exit":              { "name": "Long Exit" },
+      "schedule_enabled":       { "name": "Mowing Schedule" }
     },
     "select": {
       "cutting_mode": {

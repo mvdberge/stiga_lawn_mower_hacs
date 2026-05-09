@@ -1,6 +1,10 @@
 # Changelog
 
-## [2.3.5] - 2026-05-09
+## [2.3.6] - 2026-05-09
+
+### Fixed
+
+- **Switches were permanently "Unavailable"** — availability was incorrectly tied to the presence of `live_settings`, which was too restrictive. Switches now become available when REST data is fresh and MQTT is connected, regardless of whether SETTINGS_REQUEST responses have been received. This allows switches to function even during transient MQTT issues while the robot is reachable via REST.
 
 ### Fixed
 

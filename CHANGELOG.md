@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.3] - 2026-05-09
+
+### Fixed
+
+- **`schedule_enabled`-Switch immer „Nicht verfügbar"** — beim MQTT-Verbindungsaufbau wurde zwar ein `SETTINGS_REQUEST` gesendet, aber kein `SCHEDULING_SETTINGS_REQUEST`. Dadurch blieb `live_schedule` leer und der Schedule-Switch dauerhaft unavailable. Jetzt wird bei jeder neuen MQTT-Session auch der Schedule vom Roboter abgefragt.
+
 ## [2.3.2] - 2026-05-09
 
 ### Added

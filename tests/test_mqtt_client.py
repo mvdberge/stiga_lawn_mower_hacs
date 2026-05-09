@@ -369,3 +369,19 @@ async def test_connect_session_marks_disconnected_on_exit(
     assert seen == [True]
     # And the session has cleared the client handle so publishes get rejected.
     assert client._client is None
+
+
+async def test_connect_session_requests_settings_and_schedule(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    """Both SETTINGS_REQUEST and SCHEDULING_SETTINGS_REQUEST are sent at connect time."""
+    fake_client = _FakeAiomqttClient([])
+    with patch.object(mc_mod.aiomqtt, "Client", return_value=fake_client):
+        await client._connect_session()
+
+    published_payloads = [call.kwargs["payload"] for call in fake_client.publish.await_args_list]
+    settings_payload = mm.encode_simple_request(mc.ROBOT_CMD_SETTINGS_REQUEST)
+    schedule_payload = mm.encode_simple_request(mc.ROBOT_CMD_SCHEDULING_SETTINGS_REQUEST)
+    # STATUS_REQUEST is also sent (poll_all_robots), so check subset membership
+    assert settings_payload in published_payloads, "SETTINGS_REQUEST not sent at connect"
+    assert schedule_payload in published_payloads, "SCHEDULING_SETTINGS_REQUEST not sent at connect"

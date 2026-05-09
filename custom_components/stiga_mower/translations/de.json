@@ -100,7 +100,7 @@
       "obstacle_notifications": { "name": "Hindernis-Benachrichtigungen" },
       "smart_cutting_height":   { "name": "Smarte Schnitthöhe" },
       "long_exit":              { "name": "Langer Ausgang" },
-      "schedule_enabled":       { "name": "Mähplan" }
+      "schedule_enabled":       { "name": "Schnittmodus: Automatik" }
     },
     "select": {
       "cutting_mode": {

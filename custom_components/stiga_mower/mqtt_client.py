@@ -220,11 +220,13 @@ class StigaMQTT:
                 # every MQTT_STATUS_POLL_INTERVAL seconds for the duration of
                 # this MQTT session.
                 await self._poll_all_robots()
-                # Settings are not pushed spontaneously either.  Request them
-                # once at connection time so switch/select entities populate
-                # immediately.  Subsequent writes via cmd_settings_update will
-                # trigger a new SETTINGS frame automatically.
+                # Settings and schedule are not pushed spontaneously either.
+                # Request both once at connection time so switch/select/calendar
+                # entities populate immediately.  Subsequent writes via
+                # cmd_settings_update / cmd_schedule_set_enabled will trigger
+                # a new frame automatically.
                 await self._request_all_settings()
+                await self._request_all_schedule()
                 poll_task = asyncio.create_task(self._poll_loop(), name="stiga_mqtt_poll")
 
                 # Race the message consumer against the refresh timer.
@@ -273,6 +275,15 @@ class StigaMQTT:
                 _LOGGER.debug("Requested settings from robot %s", mac)
             except Exception as err:
                 _LOGGER.warning("Failed to request settings from %s: %s", mac, err)
+
+    async def _request_all_schedule(self) -> None:
+        """Send a SCHEDULING_SETTINGS_REQUEST to every registered robot (once at connection)."""
+        for mac in list(self._robots):
+            try:
+                await self.request_schedule(mac)
+                _LOGGER.debug("Requested schedule from robot %s", mac)
+            except Exception as err:
+                _LOGGER.warning("Failed to request schedule from %s: %s", mac, err)
 
     def _subscriptions(self) -> list[str]:
         topics: list[str] = []

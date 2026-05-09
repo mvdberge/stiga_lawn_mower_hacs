@@ -317,6 +317,8 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
 
             # Otherwise keep the previous data so entities stay visible during
             # transient cloud outages. Log at warning once per failure streak.
+            # Update the timestamp so stale data detection works correctly:
+            # after 10 minutes of failures the data will be considered stale.
             if self._consecutive_failures == 1:
                 _LOGGER.warning(
                     "STIGA REST poll failed (%s) — keeping last known state. "
@@ -324,6 +326,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                     err,
                     _STALE_DATA_THRESHOLD,
                 )
+            self._last_rest_success = dt_util.utcnow()
             return self.data
 
 

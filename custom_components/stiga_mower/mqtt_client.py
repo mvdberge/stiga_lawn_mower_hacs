@@ -160,17 +160,25 @@ class StigaMQTT:
     # -------------------------------------------------------------- Run loop
 
     async def _run_loop(self) -> None:
-        """Outer reconnect loop; one iteration = one full session."""
+        """Outer reconnect loop; one iteration = one full session.
+
+        Uses exponential backoff on consecutive failures so a persistent broker
+        outage does not result in a tight reconnect storm. Delay resets to the
+        base value after a successful session.
+        """
+        delay = mc.MQTT_RECONNECT_DELAY
         while not self._stop_event.is_set():
             try:
                 await self._connect_session()
+                # Session ended cleanly (token refresh) — reset backoff.
+                delay = mc.MQTT_RECONNECT_DELAY
             except asyncio.CancelledError:
                 raise
             except aiomqtt.MqttError as err:
                 _LOGGER.warning(
                     "MQTT connection lost: %s — reconnecting in %ds",
                     err,
-                    mc.MQTT_RECONNECT_DELAY,
+                    delay,
                 )
             except Exception:
                 _LOGGER.exception("Unexpected MQTT loop error")
@@ -181,8 +189,9 @@ class StigaMQTT:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(
                     self._stop_event.wait(),
-                    timeout=mc.MQTT_RECONNECT_DELAY,
+                    timeout=delay,
                 )
+            delay = min(delay * 2, mc.MQTT_RECONNECT_DELAY_MAX)
 
     async def _connect_session(self) -> None:
         """One connect/subscribe/dispatch cycle, broken by token refresh."""

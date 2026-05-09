@@ -26,6 +26,11 @@ MAX_CONSECUTIVE_FAILURES = 3
 
 _UPDATE_TIMEOUT = UPDATE_INTERVAL - 5
 
+# How long cached REST data is considered fresh enough to keep entities
+# available. After this window the cloud has been unreachable long enough
+# that showing stale data is misleading.
+_STALE_DATA_THRESHOLD = timedelta(minutes=10)
+
 # Static metadata (model name, garden perimeter) only changes when the user
 # touches the STIGA.GO app. We refresh it every 6 hours instead of once per
 # integration setup so updates eventually propagate without forcing a reload.
@@ -83,6 +88,10 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._live_base_status: dict[str, dict[str, Any]] = {}
         self._mqtt_connected: bool = False
 
+        # Timestamp of the last successful REST poll. Used to decide whether
+        # cached data is still recent enough to keep entities available.
+        self._last_rest_success: datetime | None = None
+
         super().__init__(
             hass,
             _LOGGER,
@@ -90,6 +99,20 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             config_entry=entry,
             update_interval=timedelta(seconds=UPDATE_INTERVAL),
         )
+
+    # -------------------------------------------------------------- Public helpers
+
+    @property
+    def rest_data_fresh(self) -> bool:
+        """True when REST data was fetched recently enough to be trustworthy.
+
+        Returns False only after _STALE_DATA_THRESHOLD has elapsed without a
+        successful poll — i.e. the cloud has been unreachable for an extended
+        period and showing cached values would be misleading.
+        """
+        if self._last_rest_success is None:
+            return False
+        return dt_util.utcnow() - self._last_rest_success < _STALE_DATA_THRESHOLD
 
     # -------------------------------------------------------------- MQTT wiring
 
@@ -213,7 +236,14 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                 self._meta[uuid] = entry
 
     async def _async_update_data(self) -> dict:
-        """Refresh devices and status for all known devices."""
+        """Refresh devices and status for all known devices.
+
+        Transient REST failures (timeouts, 5xx responses) return the last-known
+        data so entities stay available during brief cloud outages. A
+        persistent failure (no successful poll for _STALE_DATA_THRESHOLD) is
+        surfaced via the issue registry and, if there is no cached data at all,
+        raises UpdateFailed so HA marks the entry as broken.
+        """
         try:
             async with asyncio.timeout(_UPDATE_TIMEOUT):
                 # Refresh device list so newly added/removed robots are picked up
@@ -258,13 +288,14 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                     self._consecutive_failures,
                 )
             self._consecutive_failures = 0
+            self._last_rest_success = dt_util.utcnow()
 
             return self._build_data(rest_statuses=statuses)
 
         except StigaAuthError as err:
             raise ConfigEntryAuthFailed from err
 
-        except StigaApiError as err:
+        except (StigaApiError, TimeoutError) as err:
             self._consecutive_failures += 1
             if self._consecutive_failures == MAX_CONSECUTIVE_FAILURES:
                 ir.async_create_issue(
@@ -279,7 +310,21 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                         "error": str(err),
                     },
                 )
-            raise UpdateFailed(f"STIGA API error: {err}") from err
+            # If we have no data at all (first-run failure), we must raise so
+            # Home Assistant knows the entry is not usable yet.
+            if self.data is None:
+                raise UpdateFailed(f"STIGA API error: {err}") from err
+
+            # Otherwise keep the previous data so entities stay visible during
+            # transient cloud outages. Log at warning once per failure streak.
+            if self._consecutive_failures == 1:
+                _LOGGER.warning(
+                    "STIGA REST poll failed (%s) — keeping last known state. "
+                    "Entities will go unavailable after %s without a successful poll.",
+                    err,
+                    _STALE_DATA_THRESHOLD,
+                )
+            return self.data
 
 
 def _device_uuid(device: dict) -> str:

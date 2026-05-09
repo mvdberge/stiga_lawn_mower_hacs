@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.1] - 2026-05-09
+
+### Fixed
+
+- **REST-Ausfälle markieren Sensoren nicht mehr als „Nicht verfügbar"** — bei Timeouts oder Fehlern der STIGA Cloud API (30–90 s Verzögerung oder keine Antwort) behält die Integration den zuletzt bekannten Zustand bei, statt alle Entitäten sofort auf „Unavailable" zu setzen. Sensoren bleiben sichtbar, bis die Cloud länger als 10 Minuten nicht erreichbar ist.
+- **MQTT-Sensoren bleiben unabhängig von REST-Fehlern verfügbar** — Felder, die über MQTT geliefert werden (aktuelle Zone, Prozentsatz, RSSI usw.), bleiben verfügbar, solange MQTT-Frames eintreffen, auch wenn der REST-Poll fehlschlägt.
+- **Exponentieller Backoff beim MQTT-Reconnect** — bei wiederholten Verbindungsfehlern zum Broker wächst die Wartezeit von 5 s auf maximal 5 Minuten, statt in einer engen Schleife zu wiederholen.
+
 ## [2.3.0] - 2026-05-09
 
 ### Added

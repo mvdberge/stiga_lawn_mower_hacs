@@ -161,7 +161,7 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        if not self.coordinator.data:
             return False
         return self._current_value() is not None
 

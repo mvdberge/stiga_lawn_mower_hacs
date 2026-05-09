@@ -146,7 +146,7 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        if not self.coordinator.data:
             return False
         return self.current_option is not None
 

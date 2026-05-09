@@ -150,7 +150,7 @@ class StigaPositionTracker(CoordinatorEntity[StigaDataUpdateCoordinator], Tracke
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        if not self.coordinator.data:
             return False
         return self._gps_offsets() is not None
 

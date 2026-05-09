@@ -208,15 +208,18 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        data = self.coordinator.data
+        if not data:
             return False
         desc = self.entity_description
         if desc.source == "mqtt":
             return True  # mqtt_connected is always known (default False)
-        status = self.coordinator.data.get("statuses", {}).get(self._uuid)
+        status = data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
-        return status.get("has_data") is not False
+        if status.get("has_data") is False:
+            return False
+        return self.coordinator.rest_data_fresh
 
     @property
     def is_on(self) -> bool | None:

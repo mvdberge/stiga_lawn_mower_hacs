@@ -131,7 +131,7 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        if not self.coordinator.data:
             return False
         # Settable only when MQTT is live; otherwise read-only from REST status.
         return self._native_value() is not None

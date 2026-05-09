@@ -346,18 +346,22 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        data = self.coordinator.data
+        if not data:
             return False
         if self.entity_description.source == "meta":
-            return self._uuid in self.coordinator.data.get("meta", {})
-        status = self.coordinator.data.get("statuses", {}).get(self._uuid)
+            return self._uuid in data.get("meta", {})
+        status = data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
         if status.get("has_data") is False:
             return False
         if self.entity_description.key in _MQTT_ONLY_SENSOR_KEYS:
+            # MQTT-only fields: available whenever the field was received, regardless
+            # of REST freshness — MQTT can still deliver live data while REST is slow.
             return self.entity_description.status_key in status
-        return True
+        # REST-sourced fields stay available as long as cached data is recent.
+        return self.coordinator.rest_data_fresh
 
     @property
     def native_value(self) -> Any:
@@ -428,7 +432,7 @@ class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorE
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        if not self.coordinator.data:
             return False
         elements = self.coordinator.data.get("meta", {}).get(self._uuid, {}).get("zone_elements")
         return bool(elements and any(e["id"] == self._zone_id for e in elements))

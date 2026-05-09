@@ -113,7 +113,7 @@ class StigaCalendar(CoordinatorEntity[StigaDataUpdateCoordinator], CalendarEntit
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        if not self.coordinator.data:
             return False
         return self._live_schedule() is not None
 

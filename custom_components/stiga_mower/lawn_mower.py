@@ -221,15 +221,20 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
     @property
     def available(self) -> bool:
-        if not super().available:
+        data = self.coordinator.data
+        if not data:
             return False
-        status = self.coordinator.data.get("statuses", {}).get(self._uuid)
+        status = data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
         # STIGA signals "no fresh telemetry" via hasData == false. Treat
         # missing/None as available for backwards compatibility with older
         # device types that don't expose this flag.
-        return status.get("has_data") is not False
+        if status.get("has_data") is False:
+            return False
+        # MQTT frames set has_data=True and keep the mower entity available
+        # even when REST polling is temporarily failing.
+        return self.coordinator.rest_data_fresh or data.get("mqtt_connected", False)
 
     @property
     def activity(self) -> LawnMowerActivity | None:

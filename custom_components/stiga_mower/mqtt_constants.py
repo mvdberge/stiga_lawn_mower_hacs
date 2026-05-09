@@ -30,7 +30,8 @@ MQTT_KEY_FILE = "stiga.key"
 MQTT_VERIFY_SERVER_CERT = False
 
 MQTT_KEEPALIVE = 60  # seconds
-MQTT_RECONNECT_DELAY = 5  # seconds, matches matthewgream's reconnectPeriod
+MQTT_RECONNECT_DELAY = 5  # seconds initial delay; doubles on each consecutive failure
+MQTT_RECONNECT_DELAY_MAX = 300  # seconds cap (5 minutes)
 MQTT_TOKEN_REFRESH_INTERVAL = 50 * 60  # refresh Firebase id_token before 1h expiry
 
 # STIGA robots do not push status frames spontaneously — they must be polled.

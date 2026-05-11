@@ -105,6 +105,34 @@ def test_decode_status_minimal_frame() -> None:
     assert out == {"status_valid": True, "status_type": "DOCKED"}
 
 
+def test_decode_status_mowing_progress_defaults_to_zero() -> None:
+    """Proto3 default-omission: when the mowing sub-message is present but its
+    scalar fields sit at the wire default (0), the encoder drops them. The
+    decoder must still surface ``current_zone`` / ``zone_completed_pct`` /
+    ``garden_completed_pct`` as ``0`` so the progress sensors don't flicker to
+    ``unavailable`` at the start of a cycle (or while the mower sits in zone
+    0). The submsg is signalled by any non-default child — here field 4.
+    """
+    payload = pb.encode({18: {4: {1: 50}}})  # mowing submsg present, fields 1-3 omitted
+    out = mm.decode_status(payload)
+    assert out["current_zone"] == 0
+    assert out["zone_completed_pct"] == 0
+    assert out["garden_completed_pct"] == 0
+
+
+def test_decode_status_mowing_progress_absent_when_submsg_missing() -> None:
+    """When the mowing sub-message is *entirely* absent (mower idle/docked,
+    no mowing telemetry), the progress sensors must stay absent, not default
+    to 0 — otherwise idle robots would report a fake "zone 0, 0 % completed"
+    state.
+    """
+    payload = pb.encode({1: 1, 3: 4})  # status_valid + DOCKED, no field 18
+    out = mm.decode_status(payload)
+    assert "current_zone" not in out
+    assert "zone_completed_pct" not in out
+    assert "garden_completed_pct" not in out
+
+
 def test_decode_status_signal_quality_sentinel_dropped() -> None:
     """Modem reports -32768 in 20.3.11 when signal quality is unavailable;
     the decoder must omit the key rather than surface the sentinel."""

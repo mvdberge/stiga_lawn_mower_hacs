@@ -99,8 +99,7 @@
       "push_notifications":     { "name": "Push-Benachrichtigungen" },
       "obstacle_notifications": { "name": "Hindernis-Benachrichtigungen" },
       "smart_cutting_height":   { "name": "Smarte Schnitthöhe" },
-      "long_exit":              { "name": "Langer Ausgang" },
-      "schedule_enabled":       { "name": "Schnittmodus: Automatik" }
+      "long_exit":              { "name": "Langer Ausgang" }
     },
     "select": {
       "cutting_mode": {
@@ -118,6 +117,13 @@
           "4":  "4 Stunden",
           "8":  "8 Stunden",
           "12": "12 Stunden"
+        }
+      },
+      "schedule_mode": {
+        "name": "Schnittmodus",
+        "state": {
+          "manual": "Manuell",
+          "auto":   "Automatik"
         }
       }
     },

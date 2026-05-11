@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.3.8] - 2026-05-11
+
+### Fixed
+
+- **"Rain Delay" select permanently "Unavailable"** — same root cause as the 2.3.7 switch fix, but missed for the select. The rain delay is encoded on the wire as an enum index (4 h → 0, 8 h → 1, 12 h → 2), and proto3 omits scalar fields whose value equals the wire default. As soon as the robot sat at the factory default of 4 hours, the SETTINGS frame did not carry field 2 at all, so `rain_sensor_delay_h` never appeared in `live_settings` and the select went unavailable. The select now treats a populated `live_settings` entry as "available" and falls back to `4` (the proto3 default) when the key is missing.
+- **Mowing progress sensors flickered to "Unavailable" at the start of a cycle** — `current_zone`, `zone_completed_pct` and `garden_completed_pct` come from the mowing sub-message of the STATUS frame, which is also proto3-encoded. A wire value of 0 (zone 0, 0 % completed at the start of mowing) was omitted by the firmware, so the sensors briefly disappeared until the value moved off zero. When the mowing sub-message is present the decoder now defaults missing fields to 0; when the sub-message is entirely absent (idle / docked) the sensors stay correctly unavailable.
+
+### Changed
+
+- **"Cutting Mode: Auto" switch replaced by "Mowing Mode" select** — the manual/scheduled toggle is now a select with two clearly labelled options ("Manual" / "Auto", German "Manuell" / "Automatik") instead of an on/off switch. It also moves from the **Configuration** category into the **Controls** category, matching the lawn-mower's other operating controls. **Migration note:** the old `switch.<mower>_cutting_mode_auto` (German `switch.<mower>_schnittmodus_automatik`) will appear as an orphan entry in the entity registry after the upgrade — remove it via the HA UI. The new entity is `select.<mower>_mowing_mode` (German `select.<mower>_schnittmodus`).
+
 ## [2.3.7] - 2026-05-11
 
 ### Fixed

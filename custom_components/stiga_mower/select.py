@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.const import EntityCategory
@@ -36,6 +37,14 @@ class StigaSelectDescription(SelectEntityDescription):
     settings_key: str = ""
     option_to_wire: dict = field(default_factory=dict)
     wire_to_option: dict = field(default_factory=dict)
+    # Wire value to assume when the key is missing from a populated
+    # live_settings entry. STIGA's firmware uses proto3 encoding, which omits
+    # scalar fields whose value equals the wire default (varint 0). Without
+    # this fallback the dependent select stays permanently unavailable as
+    # long as the setting sits at its default value. Leave ``None`` for
+    # selects whose wire index 0 is not a valid option (e.g. cutting_mode,
+    # which is not decoded from SETTINGS today).
+    wire_default: Any = None
 
 
 def _reverse(d: dict) -> dict:
@@ -63,6 +72,10 @@ SELECT_DESCRIPTIONS: tuple[StigaSelectDescription, ...] = (
         option_to_wire={str(h): h for h in RAIN_DELAYS_HOURS},
         # wire_to_option: hours int -> str (live_settings stores hours directly)
         wire_to_option={h: str(h) for h in RAIN_DELAYS_HOURS},
+        # Wire index 0 (= 4 hours) is the proto3 default and gets omitted on
+        # the wire. Without this fallback the select stays unavailable while
+        # the robot sits at the factory default.
+        wire_default=4,
         entity_category=EntityCategory.CONFIG,
         entity_registry_enabled_default=False,
     ),
@@ -80,7 +93,7 @@ async def async_setup_entry(
 
     @callback
     def _add_new_entities() -> None:
-        new_entities: list[StigaSelect] = []
+        new_entities: list[StigaSelect | StigaScheduleModeSelect] = []
         for device in coordinator.data.get("devices", []):
             uuid = _dev_uuid(device)
             if not uuid:
@@ -91,6 +104,10 @@ async def async_setup_entry(
                     continue
                 known.add(key)
                 new_entities.append(StigaSelect(coordinator, device, description))
+            sched_key = (uuid, "schedule_mode")
+            if sched_key not in known:
+                known.add(sched_key)
+                new_entities.append(StigaScheduleModeSelect(coordinator, device))
         if new_entities:
             async_add_entities(new_entities)
 
@@ -148,15 +165,27 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
     def available(self) -> bool:
         if not self.coordinator.data:
             return False
+        # Both value source (live_settings) and write path go via MQTT — REST
+        # freshness is irrelevant here. Mirrors StigaSwitch.available.
+        mqtt = self.coordinator.mqtt
+        if mqtt is None or not mqtt.connected:
+            return False
         return self.current_option is not None
 
     @property
     def current_option(self) -> str | None:
         key = self.entity_description.settings_key
         live = self.coordinator.data.get("live_settings", {}).get(self._mac)
-        if live is None or key not in live:
+        if live is None:
             return None
-        raw = live[key]
+        # A populated entry means a SETTINGS frame has arrived. Proto3 omits
+        # scalar fields at their wire default, so a missing key for a
+        # description with a configured ``wire_default`` resolves to that
+        # default rather than to "unknown" — otherwise the select stays
+        # permanently unavailable whenever the robot sits at index 0.
+        raw = live.get(key, self.entity_description.wire_default)
+        if raw is None:
+            return None
         return self.entity_description.wire_to_option.get(raw)
 
     async def async_select_option(self, option: str) -> None:
@@ -173,6 +202,98 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
             raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+
+
+SCHEDULE_MODE_AUTO = "auto"
+SCHEDULE_MODE_MANUAL = "manual"
+
+
+class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
+    """Select that switches between manual and scheduled (auto) mowing mode.
+
+    Reads the ``enabled`` flag from ``live_schedule[mac]`` and sends only
+    field 1 of SCHEDULING_SETTINGS_UPDATE so the stored time-window blob is
+    left intact.  Lives in the default "Controls" category (no
+    ``entity_category``) — this is a user-facing operating mode, not a
+    configuration tweak.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "schedule_mode"
+
+    def __init__(
+        self,
+        coordinator: StigaDataUpdateCoordinator,
+        device: dict,
+    ) -> None:
+        super().__init__(coordinator)
+        attrs = device.get("attributes") or {}
+        self._uuid = attrs.get("uuid", "")
+        self._mac = attrs.get("mac_address", "")
+        self._attr_unique_id = f"stiga_{self._uuid}_schedule_mode"
+        self._attr_options = [SCHEDULE_MODE_MANUAL, SCHEDULE_MODE_AUTO]
+
+    def _device_attrs(self) -> dict:
+        for d in self.coordinator.data.get("devices", []):
+            if _dev_uuid(d) == self._uuid:
+                return d.get("attributes") or {}
+        return {}
+
+    @property
+    def device_info(self) -> DeviceInfo:
+        a = self._device_attrs()
+        meta = self.coordinator.data.get("meta", {}).get(self._uuid, {})
+        info = DeviceInfo(
+            identifiers={(DOMAIN, self._uuid)},
+            name=a.get("name") or self._uuid,
+            manufacturer="STIGA",
+            model=meta.get("model_name") or a.get("product_code") or a.get("device_type") or "",
+            serial_number=a.get("serial_number") or "",
+        )
+        hw, fw, _build = split_firmware_version(a.get("firmware_version"))
+        if fw:
+            info["sw_version"] = fw
+        if hw and hw != fw:
+            info["hw_version"] = hw
+        if mac := a.get("mac_address"):
+            info["connections"] = {(CONNECTION_NETWORK_MAC, mac)}
+        return info
+
+    def _schedule_enabled(self) -> bool | None:
+        sched = self.coordinator.data.get("live_schedule", {}).get(self._mac)
+        if sched is None:
+            return None
+        # Proto3 default-omission: a disabled schedule (field 1 = False) is
+        # omitted from the wire, so a missing ``enabled`` key in a populated
+        # entry means False rather than "unknown".
+        return bool(sched.get("enabled"))
+
+    @property
+    def available(self) -> bool:
+        if not self.coordinator.data:
+            return False
+        mqtt = self.coordinator.mqtt
+        if mqtt is None or not mqtt.connected:
+            return False
+        return self._schedule_enabled() is not None
+
+    @property
+    def current_option(self) -> str | None:
+        enabled = self._schedule_enabled()
+        if enabled is None:
+            return None
+        return SCHEDULE_MODE_AUTO if enabled else SCHEDULE_MODE_MANUAL
+
+    async def async_select_option(self, option: str) -> None:
+        mqtt = self.coordinator.mqtt
+        if mqtt is None or not mqtt.connected or not self._mac:
+            raise HomeAssistantError("Cannot set schedule mode: MQTT not connected")
+        if option not in (SCHEDULE_MODE_MANUAL, SCHEDULE_MODE_AUTO):
+            raise HomeAssistantError(f"Unknown option {option!r}")
+        try:
+            await mqtt.cmd_schedule_set_enabled(self._mac, option == SCHEDULE_MODE_AUTO)
+        except Exception as err:
+            raise HomeAssistantError(f"Could not set schedule mode: {err}") from err
 
 
 def _dev_uuid(device: dict) -> str:

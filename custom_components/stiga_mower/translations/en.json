@@ -99,8 +99,7 @@
       "push_notifications":     { "name": "Push Notifications" },
       "obstacle_notifications": { "name": "Obstacle Notifications" },
       "smart_cutting_height":   { "name": "Smart Cutting Height" },
-      "long_exit":              { "name": "Long Exit" },
-      "schedule_enabled":       { "name": "Cutting Mode: Auto" }
+      "long_exit":              { "name": "Long Exit" }
     },
     "select": {
       "cutting_mode": {
@@ -118,6 +117,13 @@
           "4":  "4 hours",
           "8":  "8 hours",
           "12": "12 hours"
+        }
+      },
+      "schedule_mode": {
+        "name": "Mowing Mode",
+        "state": {
+          "manual": "Manual",
+          "auto":   "Auto"
         }
       }
     },

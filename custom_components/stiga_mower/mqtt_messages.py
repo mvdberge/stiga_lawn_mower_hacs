@@ -74,9 +74,16 @@ def decode_status(payload: bytes) -> dict[str, Any]:
             out["battery_current"] = round(current, 3)
 
     if isinstance(mowing := raw.get(18), dict):
-        _set_if_present(out, "current_zone", mowing, 1)
-        _set_if_present(out, "zone_completed_pct", mowing, 2)
-        _set_if_present(out, "garden_completed_pct", mowing, 3)
+        # The mowing sub-message uses proto3 encoding: scalar fields at their
+        # wire default (varint 0) are omitted. Once the sub-message itself is
+        # present the mower is reporting mowing telemetry, so an absent inner
+        # field means "0", not "unknown". Without this default the progress
+        # sensors flicker to ``unavailable`` at the start of a cycle (zone 0,
+        # 0 % completed) — they share the same root cause as the rain-delay
+        # select fix.
+        out["current_zone"] = mowing.get(1, 0)
+        out["zone_completed_pct"] = mowing.get(2, 0)
+        out["garden_completed_pct"] = mowing.get(3, 0)
         # 18.4 = battery detail sub-message: {1: unknown counter, 2: voltage V, 3: unknown flag}
         if (
             isinstance(batt_detail := mowing.get(4), dict)

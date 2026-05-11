@@ -14,7 +14,11 @@ from custom_components.stiga_mower.coordinator import StigaDataUpdateCoordinator
 from custom_components.stiga_mower.mqtt_messages import encode_settings_update
 from custom_components.stiga_mower.number import NUMBER_DESCRIPTIONS, StigaNumber
 from custom_components.stiga_mower.protobuf_codec import decode
-from custom_components.stiga_mower.select import SELECT_DESCRIPTIONS, StigaSelect
+from custom_components.stiga_mower.select import (
+    SELECT_DESCRIPTIONS,
+    StigaScheduleModeSelect,
+    StigaSelect,
+)
 from custom_components.stiga_mower.switch import SWITCH_DESCRIPTIONS, StigaSwitch
 
 # ------------------------------------------------------------------ fixtures
@@ -24,6 +28,7 @@ def _make_coordinator(
     hass,
     *,
     live_settings=None,
+    live_schedule=None,
     rest_status=None,
     mqtt_connected=True,
 ):
@@ -34,6 +39,8 @@ def _make_coordinator(
     c._devices = [{"attributes": {"uuid": "u1", "name": "Bot", "mac_address": "MAC1"}}]
     if live_settings is not None:
         c._live_settings["MAC1"] = live_settings
+    if live_schedule is not None:
+        c._live_schedule["MAC1"] = live_schedule
     c.async_set_updated_data(c._build_data(rest_statuses={"u1": rest_status or {}}))
 
     mqtt = MagicMock()
@@ -43,6 +50,7 @@ def _make_coordinator(
     mqtt.cmd_settings_update = AsyncMock()
     mqtt.cmd_calibrate_blades = AsyncMock()
     mqtt.cmd_reset_error = AsyncMock()
+    mqtt.cmd_schedule_set_enabled = AsyncMock()
     mqtt.request_status = AsyncMock()
     c.mqtt = mqtt
     return c
@@ -237,6 +245,115 @@ def test_select_unavailable_when_no_live_settings(hass) -> None:
     c = _make_coordinator(hass)
     s = _select(c, "cutting_mode")
     assert s.available is False
+
+
+def test_select_rain_delay_defaults_to_4h_when_key_missing(hass) -> None:
+    """Proto3 default-omission: SETTINGS frames omit rain_sensor_delay_h when
+    the wire index is 0 (= 4 hours). The select must still be available and
+    report ``"4"`` instead of staying permanently ``unavailable``.
+    """
+    c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": True})
+    s = _select(c, "rain_sensor_delay")
+    assert s.available is True
+    assert s.current_option == "4"
+
+
+def test_select_unavailable_when_mqtt_disconnected(hass) -> None:
+    c = _make_coordinator(hass, live_settings={"rain_sensor_delay_h": 8}, mqtt_connected=False)
+    s = _select(c, "rain_sensor_delay")
+    assert s.available is False
+
+
+# -------------------------------------------------------- schedule_mode select
+
+
+def _schedule_mode_select(coordinator) -> StigaScheduleModeSelect:
+    return StigaScheduleModeSelect(coordinator, _device(coordinator))
+
+
+def test_schedule_mode_options_are_manual_and_auto(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": True})
+    s = _schedule_mode_select(c)
+    assert s.options == ["manual", "auto"]
+
+
+def test_schedule_mode_current_option_auto_when_enabled(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": True})
+    s = _schedule_mode_select(c)
+    assert s.available is True
+    assert s.current_option == "auto"
+
+
+def test_schedule_mode_current_option_manual_when_disabled(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": False})
+    s = _schedule_mode_select(c)
+    assert s.available is True
+    assert s.current_option == "manual"
+
+
+def test_schedule_mode_defaults_to_manual_when_key_missing(hass) -> None:
+    """Proto3 default-omission: a disabled schedule (field 1 = False) is
+    omitted on the wire. A populated live_schedule entry without the key
+    therefore means "manual", not "unavailable".
+    """
+    c = _make_coordinator(hass, live_schedule={"days": []})
+    s = _schedule_mode_select(c)
+    assert s.available is True
+    assert s.current_option == "manual"
+
+
+def test_schedule_mode_unavailable_without_live_schedule(hass) -> None:
+    c = _make_coordinator(hass)
+    s = _schedule_mode_select(c)
+    assert s.available is False
+    assert s.current_option is None
+
+
+def test_schedule_mode_unavailable_when_mqtt_disconnected(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": True}, mqtt_connected=False)
+    s = _schedule_mode_select(c)
+    assert s.available is False
+
+
+def test_schedule_mode_has_no_entity_category(hass) -> None:
+    """The schedule mode is a user-facing operating control and must live in
+    the default "Controls" HA category — not in "Configuration".
+    """
+    c = _make_coordinator(hass, live_schedule={"enabled": True})
+    s = _schedule_mode_select(c)
+    assert s.entity_category is None
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_select_auto_sends_true(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": False})
+    s = _schedule_mode_select(c)
+    await s.async_select_option("auto")
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True)
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_select_manual_sends_false(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": True})
+    s = _schedule_mode_select(c)
+    await s.async_select_option("manual")
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False)
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_unknown_option_raises(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": True})
+    s = _schedule_mode_select(c)
+    with pytest.raises(Exception, match="Unknown option"):
+        await s.async_select_option("disco")
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_raises_when_mqtt_disconnected(hass) -> None:
+    c = _make_coordinator(hass, live_schedule={"enabled": True}, mqtt_connected=False)
+    s = _schedule_mode_select(c)
+    with pytest.raises(Exception, match="MQTT not connected"):
+        await s.async_select_option("auto")
 
 
 @pytest.mark.asyncio

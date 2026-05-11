@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.3.7] - 2026-05-11
+
+### Fixed
+
+- **All switches permanently "Unavailable"** — STIGA's firmware encodes SETTINGS replies with standard proto3 semantics, which omits boolean fields whose value is `False` from the wire. The decoder only added a key when the field was present, so any currently-disabled setting (anti_theft, keyboard_lock, push_notifications, obstacle_notifications, smart_cutting_height, long_exit, often rain_sensor_enabled) never appeared in `live_settings[mac]`, and the switch's availability check `_current_value() is not None` returned `None` → permanently unavailable. The switch now treats a populated `live_settings` entry as "available" and defaults missing keys to `False`, matching the proto3 wire default. Same fix applied to the schedule switch's `enabled` flag.
+- **Partial SETTINGS/SCHEDULE frames wiped previously-known state** — after every `cmd_settings_update` write, STIGA replies with a frame containing only the touched field. The coordinator was replacing the entire `live_settings[mac]` entry, so the first write erased every other known setting and flipped all dependent switches to unavailable. `_on_mqtt_settings` and `_on_mqtt_schedule` now merge incoming partial frames with previously-known state.
+- **Sensors briefly "Unavailable" during REST hiccups while MQTT was alive** — binary sensor and sensor availability now also accepts MQTT as a live source (battery_level, is_docked, battery_charging, error_code etc. are all refreshed via `_merge_live_into_status`), so entities stay visible during transient REST timeouts as long as MQTT frames are arriving.
+- **STIGA cloud timeouts surfaced as raw `TimeoutError`** — `StigaAPI` now wraps `asyncio.TimeoutError` from auth/GET/POST calls into `StigaApiError` with a descriptive message, so the coordinator's retry/backoff logic engages instead of letting the exception propagate.
+
 ## [2.3.6] - 2026-05-09
 
 ### Fixed

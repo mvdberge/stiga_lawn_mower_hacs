@@ -219,7 +219,9 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
             return False
         if status.get("has_data") is False:
             return False
-        return self.coordinator.rest_data_fresh
+        # MQTT frames also keep these sensors fresh (battery_level, is_docked,
+        # battery_charging, error_code are all populated by _merge_live_into_status).
+        return self.coordinator.rest_data_fresh or data.get("mqtt_connected", False)
 
     @property
     def is_on(self) -> bool | None:

@@ -360,8 +360,10 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
             # MQTT-only fields: available whenever the field was received, regardless
             # of REST freshness — MQTT can still deliver live data while REST is slow.
             return self.entity_description.status_key in status
-        # REST-sourced fields stay available as long as cached data is recent.
-        return self.coordinator.rest_data_fresh
+        # Stay available as long as either source is delivering: REST cache is
+        # recent, or MQTT is pushing live frames (which also refresh battery_level,
+        # battery_voltage, etc. via _merge_live_into_status).
+        return self.coordinator.rest_data_fresh or data.get("mqtt_connected", False)
 
     @property
     def native_value(self) -> Any:

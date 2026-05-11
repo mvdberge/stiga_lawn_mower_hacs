@@ -167,21 +167,25 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
     def available(self) -> bool:
         if not self.coordinator.data:
             return False
-        # Available when REST data is fresh (entity can display cached values)
-        # AND MQTT is connected (can send settings updates)
-        if not self.coordinator.rest_data_fresh:
-            return False
+        # Both value source (live_settings) and write path go via MQTT — REST
+        # freshness is irrelevant here.
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected:
             return False
-        return True
+        return self._current_value() is not None
 
     def _current_value(self) -> bool | None:
         key = self.entity_description.settings_key
         live = self.coordinator.data.get("live_settings", {}).get(self._mac)
-        if live is not None and key in live:
-            return bool(live[key])
-        return None
+        if live is None:
+            return None
+        # A populated entry means we've received a SETTINGS frame from this
+        # robot. STIGA's firmware uses standard proto3 encoding, which omits
+        # boolean fields whose value is ``False`` (the wire default). A missing
+        # key therefore means False, not "unknown" — otherwise every switch
+        # whose setting is currently disabled would stay permanently
+        # unavailable.
+        return bool(live.get(key))
 
     @property
     def is_on(self) -> bool | None:
@@ -256,22 +260,22 @@ class StigaScheduleSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchE
 
     def _schedule_enabled(self) -> bool | None:
         sched = self.coordinator.data.get("live_schedule", {}).get(self._mac)
-        if sched is not None:
-            return sched.get("enabled")
-        return None
+        if sched is None:
+            return None
+        # Same proto3 default-omission rule as StigaSwitch._current_value: a
+        # disabled schedule (field 1 = False) is omitted from the wire, so a
+        # missing ``enabled`` key in a populated entry means False.
+        return bool(sched.get("enabled"))
 
     @property
     def available(self) -> bool:
         if not self.coordinator.data:
             return False
-        # Available when REST data is fresh (entity can display cached values)
-        # AND MQTT is connected (can send schedule updates)
-        if not self.coordinator.rest_data_fresh:
-            return False
+        # live_schedule comes via MQTT only, and changes are written via MQTT.
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected:
             return False
-        return True
+        return self._schedule_enabled() is not None
 
     @property
     def is_on(self) -> bool | None:

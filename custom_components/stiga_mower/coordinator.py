@@ -146,11 +146,25 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._publish_update()
 
     def _on_mqtt_settings(self, mac: str, data: dict[str, Any]) -> None:
-        self._live_settings[mac] = data
+        # Merge instead of replace. STIGA emits a full SETTINGS frame after the
+        # connection-time SETTINGS_REQUEST, then partial frames containing only
+        # the touched field after each cmd_settings_update. Overwriting would
+        # wipe every other previously-known setting and flicker dependent
+        # switches/numbers/selects to "unavailable" after any write.
+        if data:
+            self._live_settings[mac] = {**self._live_settings.get(mac, {}), **data}
+        else:
+            self._live_settings.setdefault(mac, {})
         self._publish_update()
 
     def _on_mqtt_schedule(self, mac: str, data: dict[str, Any]) -> None:
-        self._live_schedule[mac] = data
+        # Same merge rule as _on_mqtt_settings: cmd_schedule_set_enabled emits a
+        # partial frame containing only the ``enabled`` flag, which would
+        # otherwise wipe the stored ``days`` blob.
+        if data:
+            self._live_schedule[mac] = {**self._live_schedule.get(mac, {}), **data}
+        else:
+            self._live_schedule.setdefault(mac, {})
         self._publish_update()
 
     def _on_mqtt_base_status(self, mac: str, data: dict[str, Any]) -> None:

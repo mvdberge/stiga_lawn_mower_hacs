@@ -198,6 +198,17 @@ def test_switch_unavailable_when_no_live_settings(hass) -> None:
     assert s.available is False
 
 
+def test_switch_available_with_missing_key_defaults_to_false(hass) -> None:
+    """Proto3 default-omission: a SETTINGS frame omits bool fields that are
+    currently False. As soon as any SETTINGS frame arrives, every switch must
+    be available — missing keys mean ``False``, not ``unknown``.
+    """
+    c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": True})
+    s = _switch(c, "anti_theft")
+    assert s.available is True
+    assert s.is_on is False
+
+
 @pytest.mark.asyncio
 async def test_switch_raises_when_mqtt_disconnected(hass) -> None:
     c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": True}, mqtt_connected=False)

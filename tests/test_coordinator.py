@@ -271,11 +271,46 @@ def test_settings_push_lands_in_live_settings(
     assert coordinator.data["live_settings"]["MAC1"] == {"anti_theft": True}
 
 
+def test_settings_push_merges_partial_frames(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """A partial SETTINGS frame after a write must not wipe other settings.
+
+    STIGA's firmware replies to cmd_settings_update with a frame containing
+    only the touched field. Without merging, the next push would erase every
+    other previously-known setting and flick all dependent switches to
+    "unavailable".
+    """
+    coordinator._on_mqtt_settings(
+        "MAC1",
+        {"rain_sensor_enabled": True, "anti_theft": False, "cutting_height_mm": 30},
+    )
+    coordinator._on_mqtt_settings("MAC1", {"anti_theft": True})
+    assert coordinator.data["live_settings"]["MAC1"] == {
+        "rain_sensor_enabled": True,
+        "anti_theft": True,
+        "cutting_height_mm": 30,
+    }
+
+
 def test_schedule_push_lands_in_live_schedule(
     coordinator: StigaDataUpdateCoordinator,
 ) -> None:
     coordinator._on_mqtt_schedule("MAC1", {"enabled": True, "block_count": 7})
     assert coordinator.data["live_schedule"]["MAC1"]["enabled"] is True
+
+
+def test_schedule_push_merges_partial_frames(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """cmd_schedule_set_enabled replies with field 1 only — the stored ``days``
+    blob must survive the partial frame so the calendar entity stays populated.
+    """
+    coordinator._on_mqtt_schedule("MAC1", {"enabled": True, "days": [{"slots": set()}] * 7})
+    coordinator._on_mqtt_schedule("MAC1", {"enabled": False})
+    sched = coordinator.data["live_schedule"]["MAC1"]
+    assert sched["enabled"] is False
+    assert len(sched["days"]) == 7
 
 
 def test_base_status_push_lands_in_live_base_status(

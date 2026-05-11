@@ -70,6 +70,8 @@ class StigaAPI:
                 _LOGGER.debug("Firebase authentication successful.")
         except aiohttp.ClientError as err:
             raise StigaApiError(f"Network error during authentication: {err}") from err
+        except TimeoutError as err:
+            raise StigaApiError(f"Timeout during authentication (>{REQUEST_TIMEOUT}s)") from err
 
     async def get_token(self) -> str:
         """Return a fresh Firebase id-token, re-authenticating each call.
@@ -106,6 +108,8 @@ class StigaAPI:
                 return await resp.json()
         except aiohttp.ClientError as err:
             raise StigaApiError(f"Network error: {err}") from err
+        except TimeoutError as err:
+            raise StigaApiError(f"Timeout on GET {path} (>{REQUEST_TIMEOUT}s)") from err
 
     async def _post(self, path: str, body=None, retry: bool = True):
         if not self._token:
@@ -129,6 +133,8 @@ class StigaAPI:
                     return None
         except aiohttp.ClientError as err:
             raise StigaApiError(f"Network error: {err}") from err
+        except TimeoutError as err:
+            raise StigaApiError(f"Timeout on POST {path} (>{REQUEST_TIMEOUT}s)") from err
 
     # ------------------------------------------------------------------ Devices
 

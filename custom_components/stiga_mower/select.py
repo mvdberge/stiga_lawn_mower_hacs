@@ -212,6 +212,12 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
             raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+        # Optimistic update: the firmware omits enum fields at their proto3 wire
+        # default (e.g. rain delay index 0 = 4 h) from SETTINGS responses. Apply
+        # the selected value immediately so the entity reflects the command sent.
+        self.coordinator.apply_live_settings(
+            self._mac, {self.entity_description.settings_key: wire_value}
+        )
 
 
 SCHEDULE_MODE_AUTO = "auto"

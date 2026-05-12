@@ -210,6 +210,11 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
             raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+        # Optimistic update: the firmware's SETTINGS response omits boolean
+        # fields at their proto3 default (False). The coordinator merge cannot
+        # detect a transition to False, leaving live_settings stale. Apply the
+        # new value immediately so the entity state matches the command sent.
+        self.coordinator.apply_live_settings(self._mac, {key: value})
 
     async def async_turn_on(self, **kwargs) -> None:
         await self._send(True)

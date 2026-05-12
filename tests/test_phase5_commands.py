@@ -200,6 +200,29 @@ async def test_switch_turn_off_calls_mqtt(hass) -> None:
     c.mqtt.cmd_settings_update.assert_awaited_once_with("MAC1", {"rain_sensor_enabled": False})
 
 
+@pytest.mark.asyncio
+async def test_switch_optimistic_update_after_turn_off(hass) -> None:
+    """After turn_off the switch must show False even if the firmware's SETTINGS
+    response omits rain_sensor_enabled (proto3 default = False → absent).
+    The coordinator merge would leave live_settings stale without the
+    optimistic apply_live_settings call that _send now performs.
+    """
+    c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": True})
+    s = _switch(c, "rain_sensor_enabled")
+    assert s.is_on is True
+    await s.async_turn_off()
+    # State must reflect False immediately — before any SETTINGS frame arrives.
+    assert s.is_on is False
+
+
+@pytest.mark.asyncio
+async def test_switch_optimistic_update_after_turn_on(hass) -> None:
+    c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": False})
+    s = _switch(c, "rain_sensor_enabled")
+    await s.async_turn_on()
+    assert s.is_on is True
+
+
 def test_switch_unavailable_when_no_live_settings(hass) -> None:
     c = _make_coordinator(hass)
     s = _switch(c, "rain_sensor_enabled")
@@ -451,6 +474,28 @@ async def test_select_rain_delay_without_enabled_in_live_settings(hass) -> None:
     s = _select(c, "rain_sensor_delay")
     await s.async_select_option("8")
     c.mqtt.cmd_settings_update.assert_awaited_once_with("MAC1", {"rain_sensor_delay_h": 8})
+
+
+@pytest.mark.asyncio
+async def test_select_rain_delay_optimistic_update_to_4h(hass) -> None:
+    """Selecting 4 h must show immediately even if the firmware omits the field.
+
+    The wire index for 4 h is 0 (proto3 default), so the firmware's SETTINGS
+    response omits rain[2]. The coordinator merge cannot detect the change;
+    the optimistic apply_live_settings in async_select_option must apply it.
+    """
+    c = _make_coordinator(
+        hass,
+        live_settings={
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 8,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+    s = _select(c, "rain_sensor_delay")
+    assert s.current_option == "8"
+    await s.async_select_option("4")
+    assert s.current_option == "4"
 
 
 @pytest.mark.asyncio

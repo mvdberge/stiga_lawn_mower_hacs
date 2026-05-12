@@ -145,6 +145,20 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._live_position[mac] = data
         self._publish_update()
 
+    def apply_live_settings(self, mac: str, settings: dict[str, Any]) -> None:
+        """Optimistically merge settings into live_settings and notify listeners.
+
+        Called by write-entities immediately after publishing a MQTT command so
+        the UI reflects the new state without waiting for the firmware response.
+        This is necessary because the STIGA firmware omits proto3-default fields
+        (bool False = 0, delay index 0 = 4 h) from SETTINGS frames, which the
+        coordinator's merge-on-receive cannot detect: a field transitioning to
+        its default simply disappears from the response, leaving live_settings
+        stale.
+        """
+        self._live_settings.setdefault(mac, {}).update(settings)
+        self._publish_update()
+
     def _on_mqtt_settings(self, mac: str, data: dict[str, Any]) -> None:
         # Merge instead of replace. STIGA emits a full SETTINGS frame after the
         # connection-time SETTINGS_REQUEST, then partial frames containing only

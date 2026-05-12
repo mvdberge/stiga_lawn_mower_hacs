@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.11] - 2026-05-12
+
+### Fixed
+
+- **Rain sensor switch stays "active" after turning it off in HA** — after sending a `SETTINGS_UPDATE` to disable the rain sensor, the STIGA firmware returns a SETTINGS frame that **omits** the rain sub-message entirely (disabled = proto3 wire default = 0, so the field is suppressed). The coordinator's merge-on-receive logic cannot detect this transition: no rain key arrives → `rain_sensor_enabled` stays `True` in `live_settings` → switch shows "active". Fix: write-entities now call `coordinator.apply_live_settings` immediately after publishing a MQTT command, so the UI reflects the new state before the (incomplete) firmware response arrives. The same optimistic update applies to all boolean switches and the rain-delay select (protects against the 4 h default being omitted after a delay change).
+
 ## [2.3.10] - 2026-05-12
 
 ### Fixed

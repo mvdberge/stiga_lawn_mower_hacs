@@ -11,7 +11,7 @@ from custom_components.stiga_mower.button import (
     StigaButton,
 )
 from custom_components.stiga_mower.coordinator import StigaDataUpdateCoordinator
-from custom_components.stiga_mower.mqtt_messages import encode_settings_update
+from custom_components.stiga_mower.mqtt_messages import encode_settings_update, pack_schedule
 from custom_components.stiga_mower.number import NUMBER_DESCRIPTIONS, StigaNumber
 from custom_components.stiga_mower.protobuf_codec import decode
 from custom_components.stiga_mower.select import (
@@ -448,7 +448,7 @@ async def test_schedule_mode_select_auto_sends_true(hass) -> None:
     c = _make_coordinator(hass, live_schedule={"enabled": False})
     s = _schedule_mode_select(c)
     await s.async_select_option("auto")
-    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True)
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True, blob=None)
 
 
 @pytest.mark.asyncio
@@ -456,7 +456,34 @@ async def test_schedule_mode_select_manual_sends_false(hass) -> None:
     c = _make_coordinator(hass, live_schedule={"enabled": True})
     s = _schedule_mode_select(c)
     await s.async_select_option("manual")
-    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False)
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False, blob=None)
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_select_auto_bundles_blob(hass) -> None:
+    """Enabling schedule must bundle the current blob.
+
+    SCHEDULING_SETTINGS_UPDATE is atomic on the firmware: sending field 1
+    without field 2 resets the schedule blob to empty, wiping all mowing times.
+    Verified against 2026-05-12 app capture: both {1:1, 2:<blob>} sent together.
+    """
+    days = [{"slots": {0, 1, 2}} if i == 0 else {"slots": set()} for i in range(7)]
+    expected_blob = pack_schedule(days)
+    c = _make_coordinator(hass, live_schedule={"enabled": False, "days": days})
+    s = _schedule_mode_select(c)
+    await s.async_select_option("auto")
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True, blob=expected_blob)
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_select_manual_bundles_blob(hass) -> None:
+    """Disabling schedule must also bundle the blob to preserve mowing times."""
+    days = [{"slots": {10, 20}} if i == 3 else {"slots": set()} for i in range(7)]
+    expected_blob = pack_schedule(days)
+    c = _make_coordinator(hass, live_schedule={"enabled": True, "days": days})
+    s = _schedule_mode_select(c)
+    await s.async_select_option("manual")
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False, blob=expected_blob)
 
 
 @pytest.mark.asyncio

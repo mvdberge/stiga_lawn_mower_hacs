@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.15] - 2026-05-12
+
+### Fixed
+
+- **Switching to automatic schedule mode wipes all mowing times** — `SCHEDULING_SETTINGS_UPDATE` is atomic on the firmware: sending only field 1 (enabled flag) without field 2 (the schedule blob) resets the blob to the proto3 default (empty), deleting every stored mowing window. Verified against a 2026-05-12 app capture: the STIGA GO app always bundles both fields together (`{1: flag, 2: blob}`). Fix: `async_select_option` now reads the current `days` from `live_schedule`, packs the blob with `pack_schedule`, and passes it alongside the enabled flag — the same atomic-sub-message pattern as the rain-sensor / cutting-height fixes.
+
 ## [2.3.14] - 2026-05-12
 
 ### Fixed

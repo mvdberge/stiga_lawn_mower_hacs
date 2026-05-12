@@ -445,7 +445,9 @@ class StigaMQTT:
         payload = mm.encode_command(mc.ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE, {2: blob})
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
 
-    async def cmd_schedule_set_enabled(self, mac: str, enabled: bool) -> None:
-        """Toggle scheduling on/off (field 1 only) without changing the time-window blob."""
-        payload = mm.encode_schedule_enabled(enabled)
+    async def cmd_schedule_set_enabled(
+        self, mac: str, enabled: bool, blob: bytes | None = None
+    ) -> None:
+        """Toggle scheduling on/off.  Bundle blob (field 2) to preserve mowing times."""
+        payload = mm.encode_schedule_enabled(enabled, blob=blob)
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)

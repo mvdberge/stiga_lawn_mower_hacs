@@ -319,14 +319,18 @@ def unpack_schedule(blob: bytes) -> list[dict[str, Any]]:
     return days
 
 
-def encode_schedule_enabled(enabled: bool) -> bytes:
-    """Build a SCHEDULING_SETTINGS_UPDATE payload that only toggles the enabled flag.
+def encode_schedule_enabled(enabled: bool, blob: bytes | None = None) -> bytes:
+    """Build a SCHEDULING_SETTINGS_UPDATE payload that toggles the enabled flag.
 
-    Sends field 1 (enabled) without touching field 2 (the schedule blob), so the
-    time-window data already stored on the robot is left unchanged.  This mirrors
-    what the STIGA GO app does when switching between manual and scheduled mode.
+    The firmware treats SCHEDULING_SETTINGS_UPDATE as atomic: sending field 1
+    without field 2 resets the schedule blob to empty (proto3 default), wiping
+    all mowing times.  The STIGA GO app always bundles both fields.  Pass the
+    current packed schedule blob to preserve the stored time-windows.
     """
-    return encode_command(mc.ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE, {1: int(enabled)})
+    params: dict[int, Any] = {1: int(enabled)}
+    if blob is not None:
+        params[2] = blob
+    return encode_command(mc.ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE, params)
 
 
 def pack_schedule(days: list[dict[str, Any]]) -> bytes:

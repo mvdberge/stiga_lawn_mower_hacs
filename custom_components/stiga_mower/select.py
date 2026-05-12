@@ -19,6 +19,7 @@ from . import StigaConfigEntry
 from .const import DOMAIN, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_constants import CUTTING_MODES, RAIN_DELAYS_HOURS
+from .mqtt_messages import pack_schedule
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -312,8 +313,14 @@ class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], Sel
         if option not in (SCHEDULE_MODE_MANUAL, SCHEDULE_MODE_AUTO):
             raise HomeAssistantError(f"Unknown option {option!r}")
         enabled = option == SCHEDULE_MODE_AUTO
+        # SCHEDULING_SETTINGS_UPDATE is atomic on the firmware: sending field 1
+        # without field 2 resets the schedule blob to empty, wiping all mowing
+        # times.  Bundle the current blob so the stored windows are preserved.
+        sched = self.coordinator.data.get("live_schedule", {}).get(self._mac, {})
+        days = sched.get("days")
+        blob = pack_schedule(days) if days else None
         try:
-            await mqtt.cmd_schedule_set_enabled(self._mac, enabled)
+            await mqtt.cmd_schedule_set_enabled(self._mac, enabled, blob=blob)
         except Exception as err:
             raise HomeAssistantError(f"Could not set schedule mode: {err}") from err
         # Optimistic update: enabled=False is the proto3 default and gets omitted

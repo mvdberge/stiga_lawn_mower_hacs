@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.14] - 2026-05-12
+
+### Fixed
+
+- **Rain sensor toggle resets cutting height to 20 mm** — the cutting sub-message (field 4) is an atomic write on the firmware: omitting field 4.2 (`cutting_height_mm`) resets it to the proto3 default (index 0 = 20 mm). When toggling the rain sensor switch or changing the rain delay select from HA, the MQTT write already bundled `zone_cutting_height_enabled` (field 4.1) to prevent zone mode from resetting, but omitted field 4.2. Fix: `cutting_height_mm` is now also read from `live_settings` and bundled alongside `zone_cutting_height_enabled` in all rain-related writes, completing the cutting sub-message so the firmware preserves the user-configured height.
+
 ## [2.3.13] - 2026-05-12
 
 ### Fixed

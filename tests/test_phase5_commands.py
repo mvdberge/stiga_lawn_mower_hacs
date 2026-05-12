@@ -272,10 +272,10 @@ def test_switch_available_with_missing_key_defaults_to_false(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_switch_rain_enable_includes_delay_and_zch(hass) -> None:
-    """Activating rain sensor: delay + zone_cutting_height_enabled are appended.
+    """Activating rain sensor: delay + zch + cutting_height_mm are bundled.
 
-    Verified against 2026-05-12 app capture: SETTINGS_UPDATE params =
-    {1: {1:1, 2:1}, 4: {1:1}} when enabling at 8 h with zch=True.
+    The cutting submsg (field 4) is atomic: omitting 4.2 resets cutting height
+    to 20 mm. Verified against 2026-05-12 app capture.
     """
     c = _make_coordinator(
         hass,
@@ -283,6 +283,7 @@ async def test_switch_rain_enable_includes_delay_and_zch(hass) -> None:
             "rain_sensor_enabled": False,
             "rain_sensor_delay_h": 8,
             "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 40,
         },
     )
     s = _switch(c, "rain_sensor_enabled")
@@ -293,15 +294,17 @@ async def test_switch_rain_enable_includes_delay_and_zch(hass) -> None:
             "rain_sensor_enabled": True,
             "rain_sensor_delay_h": 8,
             "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 40,
         },
     )
 
 
 @pytest.mark.asyncio
 async def test_switch_rain_disable_includes_zch_not_delay(hass) -> None:
-    """Deactivating rain sensor: only enabled flag + zch sent (no delay).
+    """Deactivating rain sensor: enabled flag + zch + cutting_height_mm bundled.
 
-    Verified against 2026-05-12 app capture: params = {1: {1:0}, 4: {1:1}}.
+    Delay is omitted on disable (rain submsg atomic: enabled=False resets delay
+    to default anyway). Cutting submsg still needs height to avoid 20 mm reset.
     """
     c = _make_coordinator(
         hass,
@@ -309,6 +312,7 @@ async def test_switch_rain_disable_includes_zch_not_delay(hass) -> None:
             "rain_sensor_enabled": True,
             "rain_sensor_delay_h": 12,
             "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 50,
         },
     )
     s = _switch(c, "rain_sensor_enabled")
@@ -318,6 +322,7 @@ async def test_switch_rain_disable_includes_zch_not_delay(hass) -> None:
         {
             "rain_sensor_enabled": False,
             "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 50,
         },
     )
 
@@ -487,10 +492,10 @@ async def test_schedule_mode_optimistic_update_on_disable(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_select_rain_delay_includes_enabled_and_zch(hass) -> None:
-    """Changing rain delay: enabled flag + zch are appended from live_settings.
+    """Changing rain delay: enabled flag + zch + cutting_height_mm bundled.
 
-    Verified against 2026-05-12 app capture: selecting 12 h sends
-    params = {1: {1:1, 2:2}, 4: {1:1}}.
+    The cutting submsg (field 4) is atomic: omitting 4.2 resets cutting height
+    to 20 mm. Verified against 2026-05-12 app capture.
     """
     c = _make_coordinator(
         hass,
@@ -498,6 +503,7 @@ async def test_select_rain_delay_includes_enabled_and_zch(hass) -> None:
             "rain_sensor_enabled": True,
             "rain_sensor_delay_h": 4,
             "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 45,
         },
     )
     s = _select(c, "rain_sensor_delay")
@@ -508,6 +514,7 @@ async def test_select_rain_delay_includes_enabled_and_zch(hass) -> None:
             "rain_sensor_delay_h": 12,
             "rain_sensor_enabled": True,
             "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 45,
         },
     )
 

@@ -204,8 +204,13 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
                 settings["rain_sensor_delay_h"] = delay_h
             # The app always sends zone_cutting_height_enabled alongside any
             # rain-sensor write (cutting submsg is also atomic on this firmware).
+            # Also bundle cutting_height_mm: the cutting submsg (field 4) is an
+            # atomic write, so sending {4:{1:zone}} without {4:{2:height_idx}}
+            # resets cutting height to the proto3 default (index 0 = 20 mm).
             if (zch := live.get("zone_cutting_height_enabled")) is not None:
                 settings["zone_cutting_height_enabled"] = zch
+                if (cutting_h := live.get("cutting_height_mm")) is not None:
+                    settings["cutting_height_mm"] = cutting_h
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:

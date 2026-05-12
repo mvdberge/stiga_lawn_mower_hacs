@@ -218,6 +218,67 @@ def test_switch_available_with_missing_key_defaults_to_false(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_switch_rain_enable_includes_delay_and_zch(hass) -> None:
+    """Activating rain sensor: delay + zone_cutting_height_enabled are appended.
+
+    Verified against 2026-05-12 app capture: SETTINGS_UPDATE params =
+    {1: {1:1, 2:1}, 4: {1:1}} when enabling at 8 h with zch=True.
+    """
+    c = _make_coordinator(
+        hass,
+        live_settings={
+            "rain_sensor_enabled": False,
+            "rain_sensor_delay_h": 8,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+    s = _switch(c, "rain_sensor_enabled")
+    await s.async_turn_on()
+    c.mqtt.cmd_settings_update.assert_awaited_once_with(
+        "MAC1",
+        {
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 8,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_switch_rain_disable_includes_zch_not_delay(hass) -> None:
+    """Deactivating rain sensor: only enabled flag + zch sent (no delay).
+
+    Verified against 2026-05-12 app capture: params = {1: {1:0}, 4: {1:1}}.
+    """
+    c = _make_coordinator(
+        hass,
+        live_settings={
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 12,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+    s = _switch(c, "rain_sensor_enabled")
+    await s.async_turn_off()
+    c.mqtt.cmd_settings_update.assert_awaited_once_with(
+        "MAC1",
+        {
+            "rain_sensor_enabled": False,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_switch_rain_enable_without_delay_in_live_settings(hass) -> None:
+    """Enabling rain sensor when live_settings has no delay: omit delay gracefully."""
+    c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": False})
+    s = _switch(c, "rain_sensor_enabled")
+    await s.async_turn_on()
+    c.mqtt.cmd_settings_update.assert_awaited_once_with("MAC1", {"rain_sensor_enabled": True})
+
+
+@pytest.mark.asyncio
 async def test_switch_raises_when_mqtt_disconnected(hass) -> None:
     c = _make_coordinator(hass, live_settings={"rain_sensor_enabled": True}, mqtt_connected=False)
     s = _switch(c, "rain_sensor_enabled")
@@ -354,6 +415,42 @@ async def test_schedule_mode_raises_when_mqtt_disconnected(hass) -> None:
     s = _schedule_mode_select(c)
     with pytest.raises(Exception, match="MQTT not connected"):
         await s.async_select_option("auto")
+
+
+@pytest.mark.asyncio
+async def test_select_rain_delay_includes_enabled_and_zch(hass) -> None:
+    """Changing rain delay: enabled flag + zch are appended from live_settings.
+
+    Verified against 2026-05-12 app capture: selecting 12 h sends
+    params = {1: {1:1, 2:2}, 4: {1:1}}.
+    """
+    c = _make_coordinator(
+        hass,
+        live_settings={
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 4,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+    s = _select(c, "rain_sensor_delay")
+    await s.async_select_option("12")
+    c.mqtt.cmd_settings_update.assert_awaited_once_with(
+        "MAC1",
+        {
+            "rain_sensor_delay_h": 12,
+            "rain_sensor_enabled": True,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_select_rain_delay_without_enabled_in_live_settings(hass) -> None:
+    """Changing delay when live_settings has no enabled flag: omit gracefully."""
+    c = _make_coordinator(hass, live_settings={"rain_sensor_delay_h": 4})
+    s = _select(c, "rain_sensor_delay")
+    await s.async_select_option("8")
+    c.mqtt.cmd_settings_update.assert_awaited_once_with("MAC1", {"rain_sensor_delay_h": 8})
 
 
 @pytest.mark.asyncio

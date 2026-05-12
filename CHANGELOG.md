@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.10] - 2026-05-12
+
+### Fixed
+
+- **Rain sensor switch and delay select sent incomplete SETTINGS_UPDATE frames** — the STIGA firmware treats the rain sub-message (field 1) and the cutting sub-message (field 4) as atomic writes: any sub-field omitted in the update is reset to its proto3 default (0). Three related bugs: (1) enabling/disabling the rain sensor did not include the current delay index → delay silently reset to 4 h; (2) changing the rain delay via the select did not include the current enabled flag → rain sensor silently disabled; (3) neither write included `zone_cutting_height_enabled` (field 4.1) alongside the rain update → zone-based cutting height was reset. All three writes now read the current values from `live_settings` and bundle the full atomic group before publishing, mirroring the official STIGA.GO app behaviour verified by live capture. `encode_settings_update` additionally gains support for the `zone_cutting_height_enabled` key (previously unimplemented, silently ignored on write).
+
 ## [2.3.9] - 2026-05-12
 
 ### Fixed

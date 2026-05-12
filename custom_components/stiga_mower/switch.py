@@ -193,7 +193,19 @@ class StigaSwitch(CoordinatorEntity[StigaDataUpdateCoordinator], SwitchEntity):
             raise HomeAssistantError(
                 f"Cannot set {self.entity_description.key}: MQTT not connected"
             )
-        settings = {self.entity_description.settings_key: value}
+        key = self.entity_description.settings_key
+        settings: dict = {key: value}
+        if key == "rain_sensor_enabled":
+            live = self.coordinator.data.get("live_settings", {}).get(self._mac) or {}
+            # When enabling, preserve the current delay so the firmware doesn't
+            # reset it to the proto3 default (4 h, index 0). The rain submsg is
+            # an atomic write: omitting rain[2] resets it.
+            if value and (delay_h := live.get("rain_sensor_delay_h")) is not None:
+                settings["rain_sensor_delay_h"] = delay_h
+            # The app always sends zone_cutting_height_enabled alongside any
+            # rain-sensor write (cutting submsg is also atomic on this firmware).
+            if (zch := live.get("zone_cutting_height_enabled")) is not None:
+                settings["zone_cutting_height_enabled"] = zch
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:

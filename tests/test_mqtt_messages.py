@@ -274,6 +274,88 @@ def test_decode_settings_empty_payload() -> None:
     assert mm.decode_settings(b"") == {}
 
 
+# ---------------------------------------------------------------- encode_settings_update (wire-level)
+
+
+def test_encode_settings_update_zone_cutting_height_enabled() -> None:
+    """zone_cutting_height_enabled maps to cutting submsg field 4.1."""
+    from custom_components.stiga_mower.mqtt_messages import encode_settings_update
+
+    payload = encode_settings_update({"zone_cutting_height_enabled": True})
+    decoded = pb.decode(payload)
+    params = decoded[2]
+    assert params[4][1] == 1
+
+
+def test_encode_settings_update_rain_activate_8h_matches_capture() -> None:
+    """Wire output for 'enable rain sensor at 8 h' must match the 2026-05-12
+    app capture: params = {1: {1:1, 2:1}, 4: {1:1}}.
+    """
+    from custom_components.stiga_mower.mqtt_messages import encode_settings_update
+
+    payload = encode_settings_update(
+        {
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 8,
+            "zone_cutting_height_enabled": True,
+        }
+    )
+    decoded = pb.decode(payload)
+    assert decoded[1] == 18
+    params = decoded[2]
+    assert params[1] == {1: 1, 2: 1}
+    assert params[4] == {1: 1}
+    assert decoded[3] == 18
+
+
+def test_encode_settings_update_rain_activate_12h_matches_capture() -> None:
+    """params = {1: {1:1, 2:2}, 4: {1:1}} for 12 h."""
+    from custom_components.stiga_mower.mqtt_messages import encode_settings_update
+
+    payload = encode_settings_update(
+        {
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 12,
+            "zone_cutting_height_enabled": True,
+        }
+    )
+    params = pb.decode(payload)[2]
+    assert params[1] == {1: 1, 2: 2}
+    assert params[4] == {1: 1}
+
+
+def test_encode_settings_update_rain_activate_4h_matches_capture() -> None:
+    """params = {1: {1:1, 2:0}, 4: {1:1}} for 4 h (index 0, explicitly written)."""
+    from custom_components.stiga_mower.mqtt_messages import encode_settings_update
+
+    payload = encode_settings_update(
+        {
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 4,
+            "zone_cutting_height_enabled": True,
+        }
+    )
+    params = pb.decode(payload)[2]
+    assert params[1] == {1: 1, 2: 0}
+    assert params[4] == {1: 1}
+
+
+def test_encode_settings_update_rain_disable_matches_capture() -> None:
+    """Disabling: params = {1: {1:0}, 4: {1:1}} — no delay field."""
+    from custom_components.stiga_mower.mqtt_messages import encode_settings_update
+
+    payload = encode_settings_update(
+        {
+            "rain_sensor_enabled": False,
+            "zone_cutting_height_enabled": True,
+        }
+    )
+    params = pb.decode(payload)[2]
+    assert params[1] == {1: 0}
+    assert 2 not in params[1]
+    assert params[4] == {1: 1}
+
+
 # ---------------------------------------------------------------- decode_schedule
 
 

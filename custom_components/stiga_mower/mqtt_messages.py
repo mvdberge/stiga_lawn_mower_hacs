@@ -476,15 +476,21 @@ def encode_settings_update(settings: dict[str, Any]) -> bytes:
     """Build a SETTINGS_UPDATE (cmd 18) payload from human-readable settings keys.
 
     Supported keys (mirroring decode_settings output):
-      - ``rain_sensor_enabled``  (bool) → field 1.1
-      - ``rain_sensor_delay_h``  (int hours: 4/8/12) → field 1.2
-      - ``keyboard_lock``        (bool) → field 2
-      - ``cutting_height_mm``    (int mm: 20–60 step 5) → field 4.2
-      - ``anti_theft``           (bool) → field 6
-      - ``smart_cutting_height`` (bool) → field 7
-      - ``long_exit``            (bool) → field 8.1
-      - ``push_notifications``   (bool) → field 14.1
-      - ``obstacle_notifications``(bool) → field 15.1
+      - ``rain_sensor_enabled``       (bool) → field 1.1
+      - ``rain_sensor_delay_h``       (int hours: 4/8/12) → field 1.2
+      - ``keyboard_lock``             (bool) → field 2
+      - ``zone_cutting_height_enabled``(bool) → field 4.1
+      - ``cutting_height_mm``         (int mm: 20–60 step 5) → field 4.2
+      - ``anti_theft``                (bool) → field 6
+      - ``smart_cutting_height``      (bool) → field 7
+      - ``long_exit``                 (bool) → field 8.1
+      - ``push_notifications``        (bool) → field 14.1
+      - ``obstacle_notifications``    (bool) → field 15.1
+
+    Rain sensor group (fields 1.1 + 1.2) and the cutting sub-message (field 4)
+    behave as atomic writes on the firmware: omitting a sub-field resets it to
+    its wire default. Callers are responsible for including all currently-active
+    fields in the group (read from ``live_settings``) before calling this helper.
     """
     params: dict[int, Any] = {}
 
@@ -502,6 +508,8 @@ def encode_settings_update(settings: dict[str, Any]) -> bytes:
         params[2] = int(bool(v))
 
     cutting: dict[int, Any] = {}
+    if (v := settings.get("zone_cutting_height_enabled")) is not None:
+        cutting[1] = int(bool(v))
     if (height_mm := settings.get("cutting_height_mm")) is not None:
         idx = mc.CUTTING_HEIGHTS_MM.get(int(height_mm))
         if idx is not None:

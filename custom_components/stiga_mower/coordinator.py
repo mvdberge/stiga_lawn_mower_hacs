@@ -159,6 +159,16 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._live_settings.setdefault(mac, {}).update(settings)
         self._publish_update()
 
+    def apply_live_schedule(self, mac: str, schedule: dict[str, Any]) -> None:
+        """Optimistically merge schedule into live_schedule and notify listeners.
+
+        Same rationale as apply_live_settings: schedule enabled=False is the
+        proto3 default and gets omitted from the firmware's SCHEDULING_SETTINGS
+        response, so the coordinator merge cannot detect a disable transition.
+        """
+        self._live_schedule.setdefault(mac, {}).update(schedule)
+        self._publish_update()
+
     def _on_mqtt_settings(self, mac: str, data: dict[str, Any]) -> None:
         # Merge instead of replace. STIGA emits a full SETTINGS frame after the
         # connection-time SETTINGS_REQUEST, then partial frames containing only

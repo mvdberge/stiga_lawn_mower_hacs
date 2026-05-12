@@ -111,7 +111,6 @@ def test_dispatch_settings_invokes_callback(client: mc_mod.StigaMQTT) -> None:
             ROBOT_MAC,
             {
                 "rain_sensor_enabled": False,
-                "rain_sensor_delay_h": 4,
                 "anti_theft": True,
                 "smart_cutting_height": False,
             },

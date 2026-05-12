@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.3.13] - 2026-05-12
+
+### Fixed
+
+- **Rain sensor delay reset to 4 h every time rain is disabled** — the 2.3.12 fix always emitted `rain_sensor_delay_h: 4` when the rain sub-message was absent from a SETTINGS frame. Because rain-disabled frames always omit the rain sub-message (disabled is the proto3 wire default), any app-triggered or periodic SETTINGS frame silently overwrote a user-configured 8 h or 12 h delay with 4 h in `live_settings`. The next enable command from HA then sent `{delay_index: 0}` explicitly, resetting the firmware. Fix: `decode_settings` now only emits `rain_sensor_delay_h` when the rain sub-message is actually present on the wire; when absent, only `rain_sensor_enabled: False` is emitted. The delay select falls back to its `wire_default = 4` for display without touching `live_settings`.
+- **Cutting height change silently disables zone-based cutting mode** — the cutting sub-message (field 4) is an atomic write on the firmware: omitting field 4.1 (`zone_cutting_height_enabled`) resets it to its proto3 default (False). When changing cutting height from HA, the write previously sent only `{4: {2: height_index}}` without field 4.1, silently disabling zone mode with every height change. Fix: the current `zone_cutting_height_enabled` value is now bundled alongside the height (mirroring all captured app behaviour). An optimistic `apply_live_settings` call is also added so the new height shows immediately even when it equals the proto3 default (20 mm = index 0, which the firmware omits from its response).
+- **Scheduled mowing mode stays on "auto" after switching to "manual" from HA** — `schedule enabled=False` is the proto3 default and gets omitted from the firmware's `SCHEDULING_SETTINGS` response. The coordinator merge `{**old, **new}` cannot detect the transition and leaves `live_schedule["enabled"]` as `True`, keeping the select stuck on "auto". Fix: `async_select_option` now calls `apply_live_schedule` immediately after publishing the command, the same optimistic-update pattern used for switches and selects since 2.3.11.
+
 ## [2.3.12] - 2026-05-12
 
 ### Fixed

@@ -300,9 +300,11 @@ def test_settings_rain_disable_via_app_clears_live_settings(
 
     Capture 2026-05-12T10:41: app sends SETTINGS_UPDATE {1:{1:0}, 4:{1:1}},
     firmware responds with SETTINGS frame containing only zone_cutting_height_enabled
-    (rain submsg absent = disabled at proto3 default). decode_settings now always
-    populates rain keys when the frame is non-empty, so the coordinator merge
-    correctly overwrites the previously-True rain_sensor_enabled.
+    (rain submsg absent = disabled at proto3 default). decode_settings emits
+    rain_sensor_enabled=False for any non-empty frame without a rain sub-message
+    so the coordinator merge correctly overwrites the previously-True value.
+    rain_sensor_delay_h is intentionally not touched (delay key absent in output
+    when rain submsg absent), leaving any previously-configured delay intact.
     """
     from custom_components.stiga_mower.mqtt_messages import decode_settings
     from custom_components.stiga_mower.protobuf_codec import encode

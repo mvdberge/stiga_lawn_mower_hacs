@@ -173,21 +173,20 @@ def decode_settings(payload: bytes) -> dict[str, Any]:
     out: dict[str, Any] = {}
     rain = raw.get(1) if isinstance(raw.get(1), dict) else None
 
-    # The STIGA firmware always sends the full non-default state in every
-    # SETTINGS frame (confirmed by live captures 2026-05-12): fields at their
-    # proto3 wire default are omitted, but a field that changed *to* its
-    # default is signalled by the absence of its submessage. Absent rain
-    # submsg therefore means "rain disabled, delay at proto3 default 4 h" —
-    # not "untouched partial frame". We always populate rain keys when the
-    # frame has any content so a coordinator merge correctly clears them after
-    # a third-party source (e.g. the STIGA.GO app) disables the rain sensor.
-    # Exception: a completely empty frame (parse error / malformed) leaves all
-    # keys absent rather than emitting misleading defaults.
+    # SETTINGS frames encode only non-default fields (proto3 omits defaults).
+    # Absent rain submsg → rain_sensor_enabled is at its proto3 default (False).
+    # We emit rain_sensor_enabled=False for any non-empty frame so the
+    # coordinator merge correctly clears it when the STIGA.GO app disables rain.
+    #
+    # rain_sensor_delay_h is intentionally NOT emitted when the rain submsg is
+    # absent: the delay falls back to the select's wire_default (4) for display,
+    # but is not written into live_settings so that a user-configured delay
+    # (e.g. 8 h) survives a disable/re-enable cycle from HA without being
+    # silently reset to 4 h every time a SETTINGS frame without rain arrives.
     if raw:
         out["rain_sensor_enabled"] = bool(rain.get(1, 0)) if rain is not None else False
-        out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(
-            rain.get(2, 0) if rain is not None else 0
-        )
+        if rain is not None:
+            out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(rain.get(2, 0))
 
     if raw.get(2) is not None:
         out["keyboard_lock"] = bool(raw[2])

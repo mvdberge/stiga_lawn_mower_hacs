@@ -251,22 +251,21 @@ def test_decode_settings_rain_delay_4h_with_enabled_present() -> None:
     assert out["rain_sensor_delay_h"] == 4
 
 
-def test_decode_settings_rain_absent_defaults_to_disabled() -> None:
-    """Absent rain submsg in a non-empty SETTINGS frame means rain is at its
-    proto3 defaults (disabled, 4 h delay).
+def test_decode_settings_rain_absent_clears_enabled_not_delay() -> None:
+    """Absent rain submsg in a non-empty SETTINGS frame means rain is disabled.
 
-    The STIGA firmware always sends the full non-default state in every
-    SETTINGS frame (verified by live captures 2026-05-12). An absent rain
-    submsg is not a "partial frame that left rain untouched" — it means rain
-    was disabled. decode_settings must populate the rain keys with their
-    defaults so the coordinator merge correctly clears a previously-True
-    rain_sensor_enabled when the STIGA.GO app (or any other source) disables
-    the sensor.
+    rain_sensor_enabled is emitted as False so the coordinator merge clears a
+    previously-True value (e.g. set by the STIGA.GO app). rain_sensor_delay_h
+    is intentionally NOT emitted: the delay falls back to the select entity's
+    wire_default for display, but is not written into live_settings so a
+    user-configured delay (e.g. 8 h) survives a disable/re-enable cycle from
+    HA without being silently reset to 4 h every time a SETTINGS frame arrives
+    without a rain sub-message.
     """
     payload = pb.encode({6: 1})  # only anti_theft, rain submsg absent
     out = mm.decode_settings(payload)
     assert out["rain_sensor_enabled"] is False
-    assert out["rain_sensor_delay_h"] == 4
+    assert "rain_sensor_delay_h" not in out
 
 
 def test_decode_settings_unknown_cutting_height_index_returns_none() -> None:

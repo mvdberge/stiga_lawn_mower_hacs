@@ -158,11 +158,20 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
             raise HomeAssistantError(
                 f"Cannot set {self.entity_description.key}: MQTT not connected"
             )
-        settings = {self.entity_description.settings_key: int(value)}
+        key = self.entity_description.settings_key
+        settings: dict = {key: int(value)}
+        if key == "cutting_height_mm":
+            live = self.coordinator.data.get("live_settings", {}).get(self._mac) or {}
+            # The cutting submsg (field 4) is an atomic write on the firmware:
+            # omitting 4.1 resets zone_cutting_height_enabled to its proto3
+            # default (False). Bundle the current value alongside the height.
+            if (zch := live.get("zone_cutting_height_enabled")) is not None:
+                settings["zone_cutting_height_enabled"] = zch
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
             raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+        self.coordinator.apply_live_settings(self._mac, {key: int(value)})
 
 
 def _dev_uuid(device: dict) -> str:

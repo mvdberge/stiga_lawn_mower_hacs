@@ -306,10 +306,15 @@ class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], Sel
             raise HomeAssistantError("Cannot set schedule mode: MQTT not connected")
         if option not in (SCHEDULE_MODE_MANUAL, SCHEDULE_MODE_AUTO):
             raise HomeAssistantError(f"Unknown option {option!r}")
+        enabled = option == SCHEDULE_MODE_AUTO
         try:
-            await mqtt.cmd_schedule_set_enabled(self._mac, option == SCHEDULE_MODE_AUTO)
+            await mqtt.cmd_schedule_set_enabled(self._mac, enabled)
         except Exception as err:
             raise HomeAssistantError(f"Could not set schedule mode: {err}") from err
+        # Optimistic update: enabled=False is the proto3 default and gets omitted
+        # from the firmware's SCHEDULING_SETTINGS response, so the coordinator
+        # merge cannot detect a disable transition — apply immediately.
+        self.coordinator.apply_live_schedule(self._mac, {"enabled": enabled})
 
 
 def _dev_uuid(device: dict) -> str:

@@ -172,6 +172,36 @@ async def test_number_set_value_calls_mqtt(hass) -> None:
 
 
 @pytest.mark.asyncio
+async def test_number_cutting_height_bundles_zone_cutting_height_enabled(hass) -> None:
+    """Cutting submsg (field 4) is atomic: omitting 4.1 resets zone_cutting_height_enabled.
+
+    Verified against capture: SETTINGS frames always carry both 4.1 and 4.2.
+    """
+    c = _make_coordinator(
+        hass,
+        live_settings={"cutting_height_mm": 40, "zone_cutting_height_enabled": True},
+    )
+    n = _number(c)
+    await n.async_set_native_value(35)
+    c.mqtt.cmd_settings_update.assert_awaited_once_with(
+        "MAC1",
+        {"cutting_height_mm": 35, "zone_cutting_height_enabled": True},
+    )
+
+
+@pytest.mark.asyncio
+async def test_number_cutting_height_optimistic_update(hass) -> None:
+    """Cutting height at its proto3 default (20mm = index 0) is omitted from the
+    firmware response; apply_live_settings must reflect the new value immediately.
+    """
+    c = _make_coordinator(hass, live_settings={"cutting_height_mm": 40})
+    n = _number(c)
+    assert n.native_value == 40.0
+    await n.async_set_native_value(20)
+    assert n.native_value == 20.0
+
+
+@pytest.mark.asyncio
 async def test_number_raises_when_mqtt_disconnected(hass) -> None:
     c = _make_coordinator(hass, live_settings={"cutting_height_mm": 40}, mqtt_connected=False)
     n = _number(c)
@@ -438,6 +468,21 @@ async def test_schedule_mode_raises_when_mqtt_disconnected(hass) -> None:
     s = _schedule_mode_select(c)
     with pytest.raises(Exception, match="MQTT not connected"):
         await s.async_select_option("auto")
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_optimistic_update_on_disable(hass) -> None:
+    """Selecting 'manual' must show immediately without waiting for firmware.
+
+    enabled=False is the proto3 default and gets omitted from the firmware's
+    SCHEDULING_SETTINGS response; the coordinator merge cannot detect the
+    transition — apply_live_schedule must update live_schedule immediately.
+    """
+    c = _make_coordinator(hass, live_schedule={"enabled": True})
+    s = _schedule_mode_select(c)
+    assert s.current_option == "auto"
+    await s.async_select_option("manual")
+    assert s.current_option == "manual"
 
 
 @pytest.mark.asyncio

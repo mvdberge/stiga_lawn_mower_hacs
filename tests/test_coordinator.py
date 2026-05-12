@@ -293,6 +293,37 @@ def test_settings_push_merges_partial_frames(
     }
 
 
+def test_settings_rain_disable_via_app_clears_live_settings(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """STIGA.GO app disabling rain sensor must clear rain_sensor_enabled in HA.
+
+    Capture 2026-05-12T10:41: app sends SETTINGS_UPDATE {1:{1:0}, 4:{1:1}},
+    firmware responds with SETTINGS frame containing only zone_cutting_height_enabled
+    (rain submsg absent = disabled at proto3 default). decode_settings now always
+    populates rain keys when the frame is non-empty, so the coordinator merge
+    correctly overwrites the previously-True rain_sensor_enabled.
+    """
+    from custom_components.stiga_mower.mqtt_messages import decode_settings
+    from custom_components.stiga_mower.protobuf_codec import encode
+
+    coordinator._on_mqtt_settings(
+        "MAC1",
+        {
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 4,
+            "zone_cutting_height_enabled": True,
+        },
+    )
+    assert coordinator.data["live_settings"]["MAC1"]["rain_sensor_enabled"] is True
+
+    # SETTINGS frame after app disables rain: only cutting submsg present
+    frame = encode({4: {1: 1}})
+    coordinator._on_mqtt_settings("MAC1", decode_settings(frame))
+
+    assert coordinator.data["live_settings"]["MAC1"]["rain_sensor_enabled"] is False
+
+
 def test_schedule_push_lands_in_live_schedule(
     coordinator: StigaDataUpdateCoordinator,
 ) -> None:

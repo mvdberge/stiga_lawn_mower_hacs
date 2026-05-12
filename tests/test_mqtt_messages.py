@@ -251,16 +251,22 @@ def test_decode_settings_rain_delay_4h_with_enabled_present() -> None:
     assert out["rain_sensor_delay_h"] == 4
 
 
-def test_decode_settings_rain_submsg_absent_leaves_keys_unset() -> None:
-    """When the rain submsg is *entirely* missing from the frame (e.g. a
-    partial SETTINGS frame that only touched anti_theft), no rain keys may
-    appear in the decoded dict — otherwise the coordinator merge would
-    spuriously reset rain settings on every unrelated write.
+def test_decode_settings_rain_absent_defaults_to_disabled() -> None:
+    """Absent rain submsg in a non-empty SETTINGS frame means rain is at its
+    proto3 defaults (disabled, 4 h delay).
+
+    The STIGA firmware always sends the full non-default state in every
+    SETTINGS frame (verified by live captures 2026-05-12). An absent rain
+    submsg is not a "partial frame that left rain untouched" — it means rain
+    was disabled. decode_settings must populate the rain keys with their
+    defaults so the coordinator merge correctly clears a previously-True
+    rain_sensor_enabled when the STIGA.GO app (or any other source) disables
+    the sensor.
     """
-    payload = pb.encode({6: 1})  # only anti_theft
+    payload = pb.encode({6: 1})  # only anti_theft, rain submsg absent
     out = mm.decode_settings(payload)
-    assert "rain_sensor_enabled" not in out
-    assert "rain_sensor_delay_h" not in out
+    assert out["rain_sensor_enabled"] is False
+    assert out["rain_sensor_delay_h"] == 4
 
 
 def test_decode_settings_unknown_cutting_height_index_returns_none() -> None:

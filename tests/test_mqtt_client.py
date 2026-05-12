@@ -106,7 +106,17 @@ def test_dispatch_settings_invokes_callback(client: mc_mod.StigaMQTT) -> None:
 
     payload = pb.encode({6: 1, 7: 0})  # anti_theft on, smart_cut off
     client._dispatch(f"{ROBOT_MAC}/LOG/SETTINGS", payload)
-    assert received == [(ROBOT_MAC, {"anti_theft": True, "smart_cutting_height": False})]
+    assert received == [
+        (
+            ROBOT_MAC,
+            {
+                "rain_sensor_enabled": False,
+                "rain_sensor_delay_h": 4,
+                "anti_theft": True,
+                "smart_cutting_height": False,
+            },
+        )
+    ]
 
 
 def test_dispatch_schedule_invokes_callback(client: mc_mod.StigaMQTT) -> None:

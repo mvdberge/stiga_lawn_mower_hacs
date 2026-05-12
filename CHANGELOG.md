@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.12] - 2026-05-12
+
+### Fixed
+
+- **Rain sensor switch stays "on" when disabled via the STIGA.GO app** — when the official app disables the rain sensor, the firmware sends a SETTINGS frame that entirely omits the rain sub-message (disabled is the proto3 wire default). The decoder previously treated an absent rain sub-message as "frame did not touch rain" and left the old `rain_sensor_enabled: True` value in `live_settings` unchanged. Fix: `decode_settings` now treats an absent rain sub-message as "rain is at its proto3 default" and always writes `rain_sensor_enabled: False` / `rain_sensor_delay_h: 4` for any non-empty SETTINGS frame. The coordinator's merge then overwrites the stale value and the HA switch turns off correctly.
+
 ## [2.3.11] - 2026-05-12
 
 ### Fixed

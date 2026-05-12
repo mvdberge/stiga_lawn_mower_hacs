@@ -172,16 +172,22 @@ def decode_settings(payload: bytes) -> dict[str, Any]:
 
     out: dict[str, Any] = {}
     rain = raw.get(1) if isinstance(raw.get(1), dict) else None
-    if rain is not None:
-        # Proto3 sub-messages are atomic on the wire: when STIGA sends the
-        # rain submsg, every inner field is at its current state — with
-        # scalar defaults (rain[1] False, rain[2] index 0 = 4 h) omitted by
-        # proto3. Default missing inner fields here so a "set to 4 h" update
-        # actually lands in ``live_settings`` instead of being indistinguish-
-        # able from "rain submsg not touched". Without this, the previous
-        # 8 h / 12 h reading would stick forever after a switch to 4 h.
-        out["rain_sensor_enabled"] = bool(rain.get(1, 0))
-        out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(rain.get(2, 0))
+
+    # The STIGA firmware always sends the full non-default state in every
+    # SETTINGS frame (confirmed by live captures 2026-05-12): fields at their
+    # proto3 wire default are omitted, but a field that changed *to* its
+    # default is signalled by the absence of its submessage. Absent rain
+    # submsg therefore means "rain disabled, delay at proto3 default 4 h" —
+    # not "untouched partial frame". We always populate rain keys when the
+    # frame has any content so a coordinator merge correctly clears them after
+    # a third-party source (e.g. the STIGA.GO app) disables the rain sensor.
+    # Exception: a completely empty frame (parse error / malformed) leaves all
+    # keys absent rather than emitting misleading defaults.
+    if raw:
+        out["rain_sensor_enabled"] = bool(rain.get(1, 0)) if rain is not None else False
+        out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(
+            rain.get(2, 0) if rain is not None else 0
+        )
 
     if raw.get(2) is not None:
         out["keyboard_lock"] = bool(raw[2])

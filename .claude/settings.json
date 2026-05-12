@@ -9,7 +9,6 @@
       "Bash(.venv/bin/python -m pytest *)",
       "Bash(source .venv/bin/activate && python3 *",
       "Bash(source .venv/bin/activate && python *",
-      "Bash(source .venv/bin/activate && python -m pytest tests*",
       "Bash(source .venv/bin/activate && ruff *",
       "Bash(gh run view*)",
       "Bash(gh run list*)",

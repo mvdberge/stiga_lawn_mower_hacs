@@ -224,6 +224,45 @@ def test_decode_settings_full_frame() -> None:
     }
 
 
+def test_decode_settings_rain_delay_4h_via_empty_submsg() -> None:
+    """User-reported bug: setting the rain delay to 4 h in the STIGA.GO app
+    did not propagate. The wire representation of 4 h is index 0, which
+    proto3 omits. If the firmware sends a "rain touched" partial frame where
+    rain[2] alone changed to 0, the rain submsg ends up empty on the wire
+    (``[tag][length=0]``). decode_settings must still surface
+    ``rain_sensor_delay_h = 4`` so the merge into ``live_settings`` overwrites
+    a previous 8 h / 12 h value, instead of leaving the old reading sticky.
+    """
+    # Hand-craft the wire bytes: field 1 (rain submsg) as LEN with length 0.
+    payload = _varint_bytes((1 << 3) | 2) + _varint_bytes(0)
+    out = mm.decode_settings(payload)
+    assert out["rain_sensor_enabled"] is False
+    assert out["rain_sensor_delay_h"] == 4
+
+
+def test_decode_settings_rain_delay_4h_with_enabled_present() -> None:
+    """Rain submsg carries rain[1]=True but proto3-omits rain[2]=0 (= 4 h).
+    Decoder must populate both fields so the merge actually moves the
+    displayed delay back to 4 h instead of preserving the previous value.
+    """
+    payload = pb.encode({1: {1: 1}})  # rain submsg with enabled only
+    out = mm.decode_settings(payload)
+    assert out["rain_sensor_enabled"] is True
+    assert out["rain_sensor_delay_h"] == 4
+
+
+def test_decode_settings_rain_submsg_absent_leaves_keys_unset() -> None:
+    """When the rain submsg is *entirely* missing from the frame (e.g. a
+    partial SETTINGS frame that only touched anti_theft), no rain keys may
+    appear in the decoded dict — otherwise the coordinator merge would
+    spuriously reset rain settings on every unrelated write.
+    """
+    payload = pb.encode({6: 1})  # only anti_theft
+    out = mm.decode_settings(payload)
+    assert "rain_sensor_enabled" not in out
+    assert "rain_sensor_delay_h" not in out
+
+
 def test_decode_settings_unknown_cutting_height_index_returns_none() -> None:
     """Out-of-range index doesn't crash; key stays mapped to None."""
     payload = pb.encode({4: {2: 99}})

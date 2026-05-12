@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.3.9] - 2026-05-12
+
+### Fixed
+
+- **Rain delay "4 hours" set in STIGA.GO app not reflected in HA** — a two-layer proto3 bug prevented the 4 h setting from propagating. Layer 1: the codec returned `b''` for an empty LEN submessage payload instead of `{}`, causing the rain sub-message to be silently skipped when all its scalar fields were at their proto3 wire defaults (rain_sensor_delay index 0 = 4 h, omitted by firmware). Layer 2: the decoder only populated rain delay/enabled keys when the rain sub-message was a non-empty dict, so a fully-defaulted rain block was invisible. Both layers are now fixed: the codec maps an empty LEN payload to `{}` (distinguishing "submsg present, all fields at defaults" from "submsg absent"), and the decoder defaults missing inner fields to their proto3 defaults (`0`).
+
 ## [2.3.8] - 2026-05-11
 
 ### Fixed

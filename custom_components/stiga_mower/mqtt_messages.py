@@ -173,10 +173,15 @@ def decode_settings(payload: bytes) -> dict[str, Any]:
     out: dict[str, Any] = {}
     rain = raw.get(1) if isinstance(raw.get(1), dict) else None
     if rain is not None:
-        if rain.get(1) is not None:
-            out["rain_sensor_enabled"] = bool(rain[1])
-        if rain.get(2) is not None:
-            out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(rain[2])
+        # Proto3 sub-messages are atomic on the wire: when STIGA sends the
+        # rain submsg, every inner field is at its current state — with
+        # scalar defaults (rain[1] False, rain[2] index 0 = 4 h) omitted by
+        # proto3. Default missing inner fields here so a "set to 4 h" update
+        # actually lands in ``live_settings`` instead of being indistinguish-
+        # able from "rain submsg not touched". Without this, the previous
+        # 8 h / 12 h reading would stick forever after a switch to 4 h.
+        out["rain_sensor_enabled"] = bool(rain.get(1, 0))
+        out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(rain.get(2, 0))
 
     if raw.get(2) is not None:
         out["keyboard_lock"] = bool(raw[2])

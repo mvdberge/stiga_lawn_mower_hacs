@@ -56,6 +56,19 @@ def test_bool_encodes_as_varint_0_or_1() -> None:
     assert pb.decode(bytes.fromhex("0801")) == {1: 1}
 
 
+def test_empty_len_payload_decodes_as_empty_submessage() -> None:
+    """Proto3 serialises an empty submessage as ``[tag][length=0]`` and never
+    omits the wrapper. The decoder must surface this as ``{}`` so consumers
+    can distinguish "submsg was sent but every inner field is proto3-default-
+    omitted" from "submsg not present at all". Required for the STIGA rain-
+    delay 4 h fix — wire index 0 is the proto3 default and gets dropped,
+    leaving the rain submsg empty on the wire.
+    """
+    # Field 1 as LEN with length 0: just the tag byte (0x0a) and a zero length
+    encoded = bytes.fromhex("0a00")
+    assert pb.decode(encoded) == {1: {}}
+
+
 def test_bytes_payload_preserved_when_non_utf8() -> None:
     raw = b"\xff\x00\xfe\x01"
     encoded = pb.encode({1: raw})

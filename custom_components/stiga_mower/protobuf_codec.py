@@ -141,6 +141,15 @@ def decode(buf: bytes, *, fixed32_as_int: bool = False) -> dict[int, Any]:
 
 
 def _decode_len(payload: bytes, *, fixed32_as_int: bool) -> Any:
+    if not payload:
+        # Proto3 serialises an empty submessage as ``[tag][length=0]`` and
+        # *never* omits an entire submsg wrapper, even when all its scalar
+        # fields are at their wire default. Surface that wrapper as ``{}``
+        # so consumers can detect "submsg was sent but every inner field
+        # was proto3-default-omitted" — without this the rain-delay select
+        # could not tell "set to 4 h" (rain[2]=0 omitted) apart from "rain
+        # submsg never touched".
+        return {}
     if _is_printable_utf8(payload):
         return payload.decode("utf-8")
     try:

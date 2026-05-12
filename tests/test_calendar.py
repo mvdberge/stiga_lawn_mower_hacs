@@ -1,74 +1,63 @@
-"""Tests for StigaCalendar — mowing schedule read/write."""
+"""Tests for schedule_manager conversion helpers."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
-
-from custom_components.stiga_mower.calendar import (
-    StigaCalendar,
+from custom_components.stiga_mower.schedule_manager import (
     _contiguous_blocks,
-    _dt_to_slot,
-    _find_block,
+    _ha_to_stiga,
+    _slot_to_timestr,
+    _stiga_to_ha,
+    _timestr_to_slot,
 )
-from custom_components.stiga_mower.coordinator import StigaDataUpdateCoordinator
 
-# ------------------------------------------------------------------ fixtures
-
-LIVE_ACTIVE_SLOTS = {22, 23, 24, 25, 29, 30, 31, 32}
-# 11:00–13:00 and 14:30–16:30, same every day
+# ------------------------------------------------------------------ _slot_to_timestr
 
 
-def _make_coordinator(hass, *, live_schedule=None, mqtt_connected=True):
-    api = MagicMock()
-    api.get_token = AsyncMock(return_value="token")
-    entry = MagicMock(data={"email": "e", "password": "p"})
-    c = StigaDataUpdateCoordinator(hass, entry, api)
-    c._devices = [{"attributes": {"uuid": "u1", "name": "Bot", "mac_address": "MAC1"}}]
-    if live_schedule is not None:
-        c._live_schedule["MAC1"] = live_schedule
-    c.async_set_updated_data(c._build_data(rest_statuses={"u1": {}}))
-
-    mqtt = MagicMock()
-    mqtt.connected = mqtt_connected
-    mqtt.cmd_schedule_update = AsyncMock()
-    c.mqtt = mqtt
-    return c
+def test_slot_to_timestr_zero():
+    assert _slot_to_timestr(0) == "00:00"
 
 
-def _calendar(coordinator):
-    device = coordinator.data["devices"][0]
-    return StigaCalendar(coordinator, device)
+def test_slot_to_timestr_hour():
+    assert _slot_to_timestr(22) == "11:00"  # 22 * 30 = 660 min = 11 h
 
 
-def _days_all_active(slots=LIVE_ACTIVE_SLOTS):
-    return {"enabled": True, "days": [{"slots": set(slots)} for _ in range(7)]}
+def test_slot_to_timestr_half_hour():
+    assert _slot_to_timestr(29) == "14:30"  # 29 * 30 = 870 min = 14 h 30 m
 
 
-# ------------------------------------------------------------------ helper unit tests
+def test_slot_to_timestr_midnight():
+    assert _slot_to_timestr(48) == "24:00"
 
 
-def test_dt_to_slot_on_the_hour():
-    dt = datetime(2024, 1, 1, 11, 0)
-    assert _dt_to_slot(dt) == 22  # 11*2 = 22
+# ------------------------------------------------------------------ _timestr_to_slot
 
 
-def test_dt_to_slot_half_hour():
-    dt = datetime(2024, 1, 1, 14, 30)
-    assert _dt_to_slot(dt) == 29  # 14*2+1 = 29
+def test_timestr_to_slot_on_the_hour():
+    assert _timestr_to_slot("11:00") == 22
 
 
-def test_dt_to_slot_rounds_down():
-    dt = datetime(2024, 1, 1, 11, 15)
-    assert _dt_to_slot(dt) == 22  # 11*2 = 22 (15 min rounds down)
+def test_timestr_to_slot_half_hour():
+    assert _timestr_to_slot("14:30") == 29
+
+
+def test_timestr_to_slot_with_seconds():
+    assert _timestr_to_slot("11:00:00") == 22
+
+
+def test_timestr_to_slot_midnight():
+    assert _timestr_to_slot("24:00") == 48
+
+
+def test_timestr_to_slot_rounds_down():
+    # 11:15 → slot 22 (15 min < 30, truncates to :00)
+    assert _timestr_to_slot("11:15") == 22
+
+
+# ------------------------------------------------------------------ _contiguous_blocks
 
 
 def test_contiguous_blocks_two_windows():
-    slots = {22, 23, 24, 25, 29, 30, 31, 32}
-    blocks = _contiguous_blocks(slots)
-    assert blocks == [(22, 25), (29, 32)]
+    assert _contiguous_blocks({22, 23, 24, 25, 29, 30, 31, 32}) == [(22, 25), (29, 32)]
 
 
 def test_contiguous_blocks_empty():
@@ -79,223 +68,84 @@ def test_contiguous_blocks_single_slot():
     assert _contiguous_blocks({5}) == [(5, 5)]
 
 
-def test_find_block_finds_correct_block():
-    slots = {22, 23, 24, 25, 29, 30}
-    block = _find_block(slots, 22)
-    assert block == {22, 23, 24, 25}
+def test_contiguous_blocks_adjacent_single_slots():
+    assert _contiguous_blocks({3, 5}) == [(3, 3), (5, 5)]
 
 
-def test_find_block_second_window():
-    slots = {22, 23, 24, 25, 29, 30}
-    block = _find_block(slots, 29)
-    assert block == {29, 30}
+# ------------------------------------------------------------------ _stiga_to_ha
 
 
-def test_find_block_missing_start_returns_none():
-    assert _find_block({22, 23}, 10) is None
+def _days(slots_per_day: list[set[int]]) -> list[dict]:
+    return [{"slots": s} for s in slots_per_day]
 
 
-# ------------------------------------------------------------------ availability
+def test_stiga_to_ha_single_window():
+    days = _days([{22, 23, 24, 25}] + [set()] * 6)  # Mon 11:00–13:00
+    result = _stiga_to_ha(days)
+    assert result["monday"] == [{"from": "11:00", "to": "13:00"}]
+    assert result["tuesday"] == []
 
 
-def test_calendar_unavailable_when_no_live_schedule(hass):
-    c = _make_coordinator(hass)
-    cal = _calendar(c)
-    assert cal.available is False
+def test_stiga_to_ha_two_windows_same_day():
+    days = _days([{22, 23, 24, 25, 29, 30, 31, 32}] + [set()] * 6)
+    result = _stiga_to_ha(days)
+    assert result["monday"] == [
+        {"from": "11:00", "to": "13:00"},
+        {"from": "14:30", "to": "16:30"},
+    ]
 
 
-def test_calendar_available_when_live_schedule_present(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    assert cal.available is True
+def test_stiga_to_ha_all_empty():
+    days = _days([set()] * 7)
+    result = _stiga_to_ha(days)
+    for day in ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]:
+        assert result[day] == []
 
 
-# ------------------------------------------------------------------ event property
+def test_stiga_to_ha_end_of_day():
+    # Slots 46, 47 = 23:00–24:00
+    days = _days([{46, 47}] + [set()] * 6)
+    result = _stiga_to_ha(days)
+    assert result["monday"] == [{"from": "23:00", "to": "24:00"}]
 
 
-def test_event_returns_next_upcoming_window(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    event = cal.event
-    assert event is not None
-    assert "Mowing" in event.summary
+def test_stiga_to_ha_short_days_list():
+    # If MQTT sends fewer than 7 days, missing days should be empty.
+    # Slots 22+23 form one block 11:00–12:00 (slot 24 exclusive end).
+    days = [{"slots": {22, 23}}]  # only Monday
+    result = _stiga_to_ha(days)
+    assert result["monday"] == [{"from": "11:00", "to": "12:00"}]
+    assert result["tuesday"] == []
 
 
-def test_event_returns_none_when_no_schedule(hass):
-    c = _make_coordinator(hass)
-    cal = _calendar(c)
-    assert cal.event is None
+# ------------------------------------------------------------------ _ha_to_stiga
 
 
-def test_event_returns_none_when_all_slots_empty(hass):
-    c = _make_coordinator(
-        hass, live_schedule={"enabled": True, "days": [{"slots": set()} for _ in range(7)]}
-    )
-    cal = _calendar(c)
-    assert cal.event is None
+def test_ha_to_stiga_single_window():
+    item = {"monday": [{"from": "11:00", "to": "13:00"}]}
+    days = _ha_to_stiga(item)
+    assert days[0]["slots"] == {22, 23, 24, 25}
+    assert days[1]["slots"] == set()
 
 
-# ------------------------------------------------------------------ async_get_events
+def test_ha_to_stiga_two_windows():
+    item = {"monday": [{"from": "11:00", "to": "13:00"}, {"from": "14:30", "to": "16:30"}]}
+    days = _ha_to_stiga(item)
+    assert days[0]["slots"] == {22, 23, 24, 25, 29, 30, 31, 32}
 
 
-@pytest.mark.asyncio
-async def test_get_events_returns_windows_in_range(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    start = datetime(2024, 4, 29, 0, 0, tzinfo=UTC)  # Monday
-    end = start + timedelta(days=1)
-    events = await cal.async_get_events(hass, start, end)
-    assert len(events) == 2
-    times = [(e.start.hour, e.start.minute, e.end.hour, e.end.minute) for e in events]
-    assert (11, 0, 13, 0) in times
-    assert (14, 30, 16, 30) in times
+def test_ha_to_stiga_all_empty():
+    item = {}
+    days = _ha_to_stiga(item)
+    assert len(days) == 7
+    for d in days:
+        assert d["slots"] == set()
 
 
-@pytest.mark.asyncio
-async def test_get_events_empty_when_no_schedule(hass):
-    c = _make_coordinator(hass)
-    cal = _calendar(c)
-    start = datetime(2024, 4, 29, 0, 0, tzinfo=UTC)
-    events = await cal.async_get_events(hass, start, start + timedelta(days=7))
-    assert events == []
-
-
-@pytest.mark.asyncio
-async def test_get_events_covers_full_week(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    start = datetime(2024, 4, 29, 0, 0, tzinfo=UTC)  # Monday
-    end = start + timedelta(days=7)
-    events = await cal.async_get_events(hass, start, end)
-    # 2 windows × 7 days = 14 events
-    assert len(events) == 14
-
-
-@pytest.mark.asyncio
-async def test_get_events_uid_encodes_day_and_slot(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    start = datetime(2024, 4, 29, 0, 0, tzinfo=UTC)  # Monday (weekday=0)
-    end = start + timedelta(days=1)
-    events = await cal.async_get_events(hass, start, end)
-    uids = {e.uid for e in events}
-    assert "0:22" in uids  # day 0, slot 22 = Mon 11:00
-    assert "0:29" in uids  # day 0, slot 29 = Mon 14:30
-
-
-@pytest.mark.asyncio
-async def test_get_events_rrule_is_weekly(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    start = datetime(2024, 4, 29, 0, 0, tzinfo=UTC)
-    events = await cal.async_get_events(hass, start, start + timedelta(days=1))
-    for e in events:
-        assert e.rrule is not None
-        assert "FREQ=WEEKLY" in e.rrule
-
-
-# ------------------------------------------------------------------ create_event
-
-
-@pytest.mark.asyncio
-async def test_create_event_calls_cmd_schedule_update(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active({0}))  # only slot 0 active
-    cal = _calendar(c)
-    # Add a new window: Tuesday 08:00–09:00 (slots 16,17)
-    await cal.async_create_event(
-        dtstart=datetime(2024, 4, 30, 8, 0),  # Tuesday
-        dtend=datetime(2024, 4, 30, 9, 0),
-    )
-    c.mqtt.cmd_schedule_update.assert_awaited_once()
-    mac, blob = c.mqtt.cmd_schedule_update.call_args.args
-    assert mac == "MAC1"
-    assert isinstance(blob, bytes)
-    # Verify the blob decoded contains the new slots
-    from custom_components.stiga_mower.mqtt_messages import unpack_schedule
-
-    days = unpack_schedule(blob)
-    assert {16, 17}.issubset(days[1]["slots"])  # day 1 = Tuesday
-
-
-@pytest.mark.asyncio
-async def test_create_event_raises_on_overlap(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    with pytest.raises(Exception, match="overlaps"):
-        await cal.async_create_event(
-            dtstart=datetime(2024, 4, 29, 11, 0),  # Mon 11:00 — already active
-            dtend=datetime(2024, 4, 29, 12, 0),
-        )
-
-
-@pytest.mark.asyncio
-async def test_create_event_raises_when_mqtt_disconnected(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active(), mqtt_connected=False)
-    cal = _calendar(c)
-    with pytest.raises(Exception, match="MQTT not connected"):
-        await cal.async_create_event(
-            dtstart=datetime(2024, 4, 29, 6, 0),
-            dtend=datetime(2024, 4, 29, 7, 0),
-        )
-
-
-@pytest.mark.asyncio
-async def test_create_event_single_slot(hass):
-    c = _make_coordinator(
-        hass, live_schedule={"enabled": True, "days": [{"slots": set()} for _ in range(7)]}
-    )
-    cal = _calendar(c)
-    await cal.async_create_event(
-        dtstart=datetime(2024, 4, 29, 6, 0),  # slot 12
-        dtend=datetime(2024, 4, 29, 6, 30),  # slot 13 exclusive → only slot 12
-    )
-    c.mqtt.cmd_schedule_update.assert_awaited_once()
-    _, blob = c.mqtt.cmd_schedule_update.call_args.args
-    from custom_components.stiga_mower.mqtt_messages import unpack_schedule
-
-    days = unpack_schedule(blob)
-    assert 12 in days[0]["slots"]
-    assert 13 not in days[0]["slots"]
-
-
-# ------------------------------------------------------------------ delete_event
-
-
-@pytest.mark.asyncio
-async def test_delete_event_removes_block(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    # Delete Monday 11:00 window (uid "0:22")
-    await cal.async_delete_event("0:22")
-    c.mqtt.cmd_schedule_update.assert_awaited_once()
-    _, blob = c.mqtt.cmd_schedule_update.call_args.args
-    from custom_components.stiga_mower.mqtt_messages import unpack_schedule
-
-    days = unpack_schedule(blob)
-    # Slots 22-25 should be gone, 29-32 remain
-    assert not {22, 23, 24, 25} & days[0]["slots"]
-    assert {29, 30, 31, 32}.issubset(days[0]["slots"])
-
-
-@pytest.mark.asyncio
-async def test_delete_event_raises_on_invalid_uid(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    with pytest.raises(Exception, match="Invalid event uid"):
-        await cal.async_delete_event("not-a-valid-uid")
-
-
-@pytest.mark.asyncio
-async def test_delete_event_raises_when_block_not_found(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active())
-    cal = _calendar(c)
-    with pytest.raises(Exception, match="No mowing window"):
-        await cal.async_delete_event("0:0")  # slot 0 not active
-
-
-@pytest.mark.asyncio
-async def test_delete_event_raises_when_mqtt_disconnected(hass):
-    c = _make_coordinator(hass, live_schedule=_days_all_active(), mqtt_connected=False)
-    cal = _calendar(c)
-    with pytest.raises(Exception, match="MQTT not connected"):
-        await cal.async_delete_event("0:22")
+def test_ha_to_stiga_roundtrip():
+    original_days = _days([{22, 23, 24, 25, 29, 30}] + [set()] * 6)
+    ha = _stiga_to_ha(original_days)
+    recovered = _ha_to_stiga(ha)
+    assert recovered[0]["slots"] == {22, 23, 24, 25, 29, 30}
+    for i in range(1, 7):
+        assert recovered[i]["slots"] == set()

@@ -445,18 +445,24 @@ def test_schedule_mode_has_no_entity_category(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_mode_select_auto_sends_true(hass) -> None:
+    # No days in live_schedule → always bundles an empty blob (never sends blob=None)
+    from custom_components.stiga_mower.mqtt_messages import pack_schedule
+
     c = _make_coordinator(hass, live_schedule={"enabled": False})
     s = _schedule_mode_select(c)
     await s.async_select_option("auto")
-    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True, blob=None)
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True, blob=pack_schedule([]))
 
 
 @pytest.mark.asyncio
 async def test_schedule_mode_select_manual_sends_false(hass) -> None:
+    # No days in live_schedule → always bundles an empty blob (never sends blob=None)
+    from custom_components.stiga_mower.mqtt_messages import pack_schedule
+
     c = _make_coordinator(hass, live_schedule={"enabled": True})
     s = _schedule_mode_select(c)
     await s.async_select_option("manual")
-    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False, blob=None)
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False, blob=pack_schedule([]))
 
 
 @pytest.mark.asyncio

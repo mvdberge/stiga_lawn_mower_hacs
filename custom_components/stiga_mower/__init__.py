@@ -13,13 +13,13 @@ from .api import StigaAPI
 from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_client import StigaMQTT
+from .schedule_manager import StigaScheduleManager
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
-    Platform.CALENDAR,
     Platform.DEVICE_TRACKER,
     Platform.LAWN_MOWER,
     Platform.NUMBER,
@@ -68,6 +68,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> boo
 
     entry.runtime_data = coordinator
     entry.async_on_unload(_make_unload(mqtt))
+
+    schedule_manager = StigaScheduleManager(hass, entry, coordinator)
+    await schedule_manager.async_setup()
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

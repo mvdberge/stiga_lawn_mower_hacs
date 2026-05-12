@@ -315,10 +315,11 @@ class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], Sel
         enabled = option == SCHEDULE_MODE_AUTO
         # SCHEDULING_SETTINGS_UPDATE is atomic on the firmware: sending field 1
         # without field 2 resets the schedule blob to empty, wiping all mowing
-        # times.  Bundle the current blob so the stored windows are preserved.
+        # times.  Always bundle field 2 — use the current live days if known,
+        # otherwise fall back to an empty blob (which is equivalent to the
+        # proto3 default but makes the intent explicit and keeps the command safe).
         sched = self.coordinator.data.get("live_schedule", {}).get(self._mac, {})
-        days = sched.get("days")
-        blob = pack_schedule(days) if days else None
+        blob = pack_schedule(sched.get("days") or [])
         try:
             await mqtt.cmd_schedule_set_enabled(self._mac, enabled, blob=blob)
         except Exception as err:

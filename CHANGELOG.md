@@ -1,5 +1,15 @@
 # Changelog
 
+## [2.4.0] - 2026-05-12
+
+### Added
+
+- **Native HA Schedule entity for mowing schedule** — the integration now creates a `schedule.*` helper entity per mower on first setup. The entity is fully editable via the built-in Home Assistant Schedule UI (horizontal time-block editor per weekday). Changes made in the UI are pushed to the robot via MQTT; schedule changes received from the robot (e.g. via the STIGA.GO app) are synced back into the HA entity automatically. The previous `calendar.*` entity has been removed.
+
+### Fixed
+
+- **Switching mowing mode could wipe the firmware schedule blob** — `SCHEDULING_SETTINGS_UPDATE` is atomic: omitting field 2 (the schedule blob) resets it to the proto3 default (empty). The mode-switch command now always bundles field 2, even when no schedule data is known locally (fallback: empty blob), so the command never silently clears the stored mowing times.
+
 ## [2.3.15] - 2026-05-12
 
 ### Fixed

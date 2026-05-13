@@ -13,6 +13,7 @@ it bidirectionally in sync:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import TYPE_CHECKING, Any
 
@@ -109,30 +110,48 @@ class StigaScheduleManager:
             await self._store.async_save(self._item_ids)
             _LOGGER.debug("Created schedule entity %s for %s", item_id, mac)
 
-        # Associate with the mower device — runs on every setup so restarts and
-        # first-time creation (where device may not have existed yet) both work.
+        # Associate with the mower device — runs as a task so that entity
+        # registration (which HA schedules via async_create_task internally)
+        # has a chance to complete before we look up the entity registry.
         if uuid:
-            self._associate_with_device(item_id, uuid)
+            self._hass.async_create_task(self._associate_with_device(item_id, uuid))
 
-    @callback
-    def _associate_with_device(self, item_id: str, uuid: str) -> None:
-        """Link the schedule helper entity to the mower device in the registries."""
+    async def _associate_with_device(self, item_id: str, uuid: str) -> None:
+        """Link the schedule helper entity to the mower device in the registries.
+
+        Retries up to 5 times because HA's schedule component registers
+        entities via async_create_task, so the entity registry entry may not
+        exist yet when this coroutine first runs.
+        """
         dev_reg = dr.async_get(self._hass)
         ent_reg = er.async_get(self._hass)
 
-        device = dev_reg.async_get_device(identifiers={(DOMAIN, uuid)})
-        if not device:
-            _LOGGER.debug("Device %s not yet in registry; association skipped", uuid)
-            return
+        for attempt in range(5):
+            device = dev_reg.async_get_device(identifiers={(DOMAIN, uuid)})
+            if not device:
+                _LOGGER.debug("Device %s not yet in registry on attempt %d", uuid, attempt)
+            else:
+                entity_id = ent_reg.async_get_entity_id("schedule", "schedule", item_id)
+                if entity_id is None:
+                    for entry in er.async_entries_for_domain(ent_reg, "schedule"):
+                        if entry.unique_id == item_id:
+                            entity_id = entry.entity_id
+                            break
 
-        for entry in er.async_entries_for_domain(ent_reg, "schedule"):
-            if entry.unique_id == item_id:
-                if entry.device_id != device.id:
-                    ent_reg.async_update_entity(entry.entity_id, device_id=device.id)
-                    _LOGGER.debug(
-                        "Associated schedule entity %s with device %s", entry.entity_id, uuid
-                    )
-                return
+                if entity_id:
+                    reg_entry = ent_reg.async_get(entity_id)
+                    if reg_entry and reg_entry.device_id != device.id:
+                        ent_reg.async_update_entity(entity_id, device_id=device.id)
+                        _LOGGER.debug(
+                            "Associated schedule entity %s with device %s", entity_id, uuid
+                        )
+                    return
+
+            await asyncio.sleep(0.5 * (attempt + 1))
+
+        _LOGGER.warning(
+            "Could not associate schedule entity %s with device %s after retries", item_id, uuid
+        )
 
     # ------------------------------------------------------ MQTT → HA
 

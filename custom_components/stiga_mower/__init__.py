@@ -69,10 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> boo
     entry.runtime_data = coordinator
     entry.async_on_unload(_make_unload(mqtt))
 
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Must run after async_forward_entry_setups so the mower device entries
+    # are already present in the device registry when we associate the
+    # schedule helper entity with the device.
     schedule_manager = StigaScheduleManager(hass, entry, coordinator)
     await schedule_manager.async_setup()
 
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 

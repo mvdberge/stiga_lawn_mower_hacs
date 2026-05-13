@@ -17,8 +17,11 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 
+from .const import DOMAIN
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_messages import pack_schedule
 
@@ -67,8 +70,9 @@ class StigaScheduleManager:
             mac = attrs.get("mac_address")
             if not mac:
                 continue
-            name = attrs.get("name") or attrs.get("uuid") or mac
-            await self._setup_device(mac, name)
+            uuid = attrs.get("uuid") or ""
+            name = attrs.get("name") or uuid or mac
+            await self._setup_device(mac, uuid, name)
 
         collection = self._hass.data.get("schedule")
         if collection is not None:
@@ -80,7 +84,7 @@ class StigaScheduleManager:
             self._coordinator.async_add_listener(self._on_coordinator_update)
         )
 
-    async def _setup_device(self, mac: str, name: str) -> None:
+    async def _setup_device(self, mac: str, uuid: str, name: str) -> None:
         """Create or reuse the schedule entity for one mower."""
         collection = self._hass.data.get("schedule")
         if collection is None:
@@ -92,19 +96,43 @@ class StigaScheduleManager:
         item_id = self._item_ids.get(mac)
         if item_id and item_id in collection.data:
             _LOGGER.debug("Reusing existing schedule entity %s for %s", item_id, mac)
+        else:
+            live = self._coordinator.data.get("live_schedule", {}).get(mac, {})
+            ha_sched = _stiga_to_ha(live.get("days") or [])
+
+            item = await collection.async_create(
+                {"name": f"Stiga – {name}", "icon": "mdi:robot-mower", **ha_sched}
+            )
+            item_id = item["id"]
+            self._item_ids[mac] = item_id
+            self._last_pushed[mac] = ha_sched
+            await self._store.async_save(self._item_ids)
+            _LOGGER.debug("Created schedule entity %s for %s", item_id, mac)
+
+        # Associate with the mower device — runs on every setup so restarts and
+        # first-time creation (where device may not have existed yet) both work.
+        if uuid:
+            self._associate_with_device(item_id, uuid)
+
+    @callback
+    def _associate_with_device(self, item_id: str, uuid: str) -> None:
+        """Link the schedule helper entity to the mower device in the registries."""
+        dev_reg = dr.async_get(self._hass)
+        ent_reg = er.async_get(self._hass)
+
+        device = dev_reg.async_get_device(identifiers={(DOMAIN, uuid)})
+        if not device:
+            _LOGGER.debug("Device %s not yet in registry; association skipped", uuid)
             return
 
-        live = self._coordinator.data.get("live_schedule", {}).get(mac, {})
-        ha_sched = _stiga_to_ha(live.get("days") or [])
-
-        item = await collection.async_create(
-            {"name": f"Stiga – {name}", "icon": "mdi:robot-mower", **ha_sched}
-        )
-        item_id = item["id"]
-        self._item_ids[mac] = item_id
-        self._last_pushed[mac] = ha_sched
-        await self._store.async_save(self._item_ids)
-        _LOGGER.debug("Created schedule entity %s for %s", item_id, mac)
+        for entry in er.async_entries_for_domain(ent_reg, "schedule"):
+            if entry.unique_id == item_id:
+                if entry.device_id != device.id:
+                    ent_reg.async_update_entity(entry.entity_id, device_id=device.id)
+                    _LOGGER.debug(
+                        "Associated schedule entity %s with device %s", entry.entity_id, uuid
+                    )
+                return
 
     # ------------------------------------------------------ MQTT → HA
 

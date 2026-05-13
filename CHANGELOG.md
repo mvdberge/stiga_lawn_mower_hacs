@@ -1,6 +1,12 @@
 # Changelog
 
-## [2.4.0] - 2026-05-12
+## [2.4.1] - 2026-05-13
+
+### Fixed
+
+- **Schedule entity not appearing in the mower device view** — the schedule helper entity was created before `async_forward_entry_setups` completed, so the mower device did not yet exist in the device registry when the entity was associated. On subsequent restarts the existing entity was reused but association was never re-attempted. Fix: schedule manager setup now runs after platform setup, and device association via the entity registry is attempted on every startup (new and existing entities alike).
+
+## [2.4.0] - 2026-05-13
 
 ### Added
 

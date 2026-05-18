@@ -213,7 +213,14 @@ class StigaScheduleManager:
             _LOGGER.warning("Cannot push schedule for %s: MQTT not connected", mac)
             return
 
-        await mqtt.cmd_schedule_update(mac, blob)
+        # SCHEDULING_SETTINGS_UPDATE is atomic on the firmware: sending field 2
+        # (blob) without field 1 (enabled) resets ``enabled`` to its proto3
+        # default False, silently disabling scheduling whenever the user edits
+        # the time blocks. Bundle the current enabled state so an edit preserves
+        # whichever mode the mower was in.
+        sched = self._coordinator.data.get("live_schedule", {}).get(mac, {})
+        enabled = bool(sched.get("enabled"))
+        await mqtt.cmd_schedule_set_enabled(mac, enabled, blob=blob)
         self._last_pushed[mac] = _stiga_to_ha(days)
         self._coordinator.apply_live_schedule(mac, {"days": days})
 

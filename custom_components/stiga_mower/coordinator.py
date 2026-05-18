@@ -170,11 +170,13 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._publish_update()
 
     def _on_mqtt_settings(self, mac: str, data: dict[str, Any]) -> None:
-        # Merge instead of replace. STIGA emits a full SETTINGS frame after the
-        # connection-time SETTINGS_REQUEST, then partial frames containing only
-        # the touched field after each cmd_settings_update. Overwriting would
-        # wipe every other previously-known setting and flicker dependent
-        # switches/numbers/selects to "unavailable" after any write.
+        # SETTINGS frames are sparse full snapshots: every non-default field is
+        # present, fields at their proto3 default are omitted. Absence of a
+        # submsg in a non-empty frame genuinely means "all its fields at
+        # default" (verified empirically via capture/inject_settings.py on
+        # 2026-05-18 — see capture/bug2_capture.jsonl). We still merge instead
+        # of replace so an empty decode (parse error) does not wipe state, and
+        # so any future partial sub-frame would degrade gracefully.
         if data:
             self._live_settings[mac] = {**self._live_settings.get(mac, {}), **data}
         else:

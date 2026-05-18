@@ -440,11 +440,6 @@ class StigaMQTT:
         payload = mm.encode_settings_update(settings)
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
 
-    async def cmd_schedule_update(self, mac: str, blob: bytes) -> None:
-        """Send ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE (20) with the packed schedule blob."""
-        payload = mm.encode_command(mc.ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE, {2: blob})
-        await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
-
     async def cmd_schedule_set_enabled(
         self, mac: str, enabled: bool, blob: bytes | None = None
     ) -> None:

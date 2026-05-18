@@ -127,9 +127,17 @@ class StigaAPI:
                     return await self._post(path, body, retry=False)
                 if resp.status not in (200, 204):
                     raise StigaApiError(f"POST {path} → HTTP {resp.status}")
+                if resp.status == 204 or not resp.content_length:
+                    return None
                 try:
-                    return await resp.json() if resp.content_length else None
-                except Exception:
+                    return await resp.json()
+                except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
+                    _LOGGER.warning(
+                        "POST %s returned non-JSON body (HTTP %d): %s",
+                        path,
+                        resp.status,
+                        err,
+                    )
                     return None
         except aiohttp.ClientError as err:
             raise StigaApiError(f"Network error: {err}") from err

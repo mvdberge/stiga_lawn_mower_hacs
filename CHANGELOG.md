@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.4.2] - 2026-05-18
+
+### Fixed
+
+- **Editing the mowing schedule silently disabled scheduling mode** — `cmd_schedule_update` only sent field 2 (blob) of `SCHEDULING_SETTINGS_UPDATE`. Because the firmware treats this command as atomic, the omitted field 1 (`enabled`) was reset to its proto3 default (False), so every schedule edit from HA turned auto-mode off. Schedule edits now bundle the current `enabled` state via `cmd_schedule_set_enabled`, mirroring the existing schedule-mode-toggle path.
+- **Schedule entity still not appearing in the mower device view** — the previous fix moved setup after platform registration but the HA schedule component itself registers entities via `async_create_task`, so the entity registry entry may not exist yet when device association runs. Fix: device association now runs as an async task with exponential-backoff retries (up to 5 attempts, 0.5 s apart) so it waits for the entity registry entry to appear. Also uses `async_get_entity_id` as a faster primary lookup before falling back to a full domain scan.
+- **REST grace timer never expiring on silent API failures** — when every per-device status fetch failed but no exception was raised at the outer level, `_last_rest_success` was still bumped, preventing entities from going unavailable after the 10-minute grace period. The poll is now only considered successful if at least one device's status was actually fetched fresh.
+- **`error_active` binary sensor stuck on "Problem" after a fault cleared** — the cloud's REST `errorCode` is sticky and continues to report past faults indefinitely. The coordinator merge only overwrote `error_code` when a live MQTT `info_code` was present, so the stale REST value persisted. Fix: when a live frame omits field 10 (proto3 default = no fault), `error_code` is explicitly cleared.
+- **`StigaAPI._post` swallowed every exception while decoding the response** — a bare `except Exception` masked unrelated errors and produced silent `None` returns on malformed JSON. Narrowed to `json.JSONDecodeError` / `aiohttp.ContentTypeError` and added a warning log including the request path and HTTP status.
+
+### Internal
+
+- Verified empirically via the new `capture/inject_settings.py` helper (raw capture in `capture/bug2_capture.jsonl`) that STIGA firmware emits sparse-but-complete `LOG/SETTINGS` snapshots after `SETTINGS_UPDATE`, not partial frames containing only the touched field. Misleading comment in `coordinator._on_mqtt_settings` corrected; `.claude/CLAUDE.md` gained a wire-level reference; two regression tests with captured raw bytes added.
+
 ## [2.4.1] - 2026-05-13
 
 ### Fixed

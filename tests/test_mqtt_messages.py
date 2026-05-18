@@ -268,6 +268,37 @@ def test_decode_settings_rain_absent_clears_enabled_not_delay() -> None:
     assert "rain_sensor_delay_h" not in out
 
 
+def test_decode_settings_real_mower_snapshot_after_obstacle_disable() -> None:
+    """Captured 2026-05-18 from MAC 3C:22:7F:AA:BA:EA after publishing
+    ``SETTINGS_UPDATE {15: {1: 0}}`` (obstacle_notifications=False, i.e. proto3
+    default). The firmware's unsolicited LOG/SETTINGS reply is a sparse full
+    snapshot — only ``cutting.zone_enabled=True`` was non-default. Locks in
+    that the decoder correctly interprets rain-submsg absence as "rain off",
+    instead of leaving the previous live_settings value intact.
+    """
+    payload = bytes.fromhex("22020801")
+    assert mm.decode_settings(payload) == {
+        "rain_sensor_enabled": False,
+        "zone_cutting_height_enabled": True,
+    }
+
+
+def test_decode_settings_real_mower_snapshot_after_anti_theft_enable() -> None:
+    """Same capture session, after ``SETTINGS_UPDATE {6: 1}`` (anti_theft=True).
+
+    The snapshot now carries the touched field plus everything that was
+    already non-default; rain is still absent (rain genuinely off on this
+    robot), proving frames grow monotonically with each user change rather
+    than shrinking to "only the touched field".
+    """
+    payload = bytes.fromhex("220208013001")
+    assert mm.decode_settings(payload) == {
+        "rain_sensor_enabled": False,
+        "zone_cutting_height_enabled": True,
+        "anti_theft": True,
+    }
+
+
 def test_decode_settings_unknown_cutting_height_index_returns_none() -> None:
     """Out-of-range index doesn't crash; key stays mapped to None."""
     payload = pb.encode({4: {2: 99}})

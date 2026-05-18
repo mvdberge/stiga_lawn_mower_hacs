@@ -480,6 +480,12 @@ def _merge_live_into_status(base: dict, live: dict) -> dict:
 
     if (info_code := live.get("info_code")) is not None:
         out["error_code"] = info_code
+    elif live:
+        # MQTT STATUS frames omit field 10 when no fault is active (proto3
+        # default omission). The cloud's REST `errorCode` may continue to
+        # report the last-seen fault long after it cleared (same stale-cache
+        # behaviour as `battery_charging` above), so MQTT silence must win.
+        out["error_code"] = None
     # Any live frame proves the mower is online and emitting data.
     out["has_data"] = True
 

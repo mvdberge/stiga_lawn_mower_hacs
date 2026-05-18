@@ -93,6 +93,17 @@ def test_merge_keeps_rest_charging_when_mqtt_has_no_status_type() -> None:
     assert out["battery_charging"] is True
 
 
+def test_merge_live_status_clears_stale_rest_error_code() -> None:
+    # Captured behaviour: STIGA cloud REST `errorCode` continues to report a
+    # past fault long after it cleared. MQTT STATUS frames omit field 10
+    # (proto3 default) once the error is gone — that silence must clear the
+    # stale REST value rather than leave the `error_active` sensor stuck on
+    # "Problem".
+    base = {"error_code": 425, "current_action": "WAITING"}
+    out = _merge_live_into_status(base, {"status_type": "MOWING"})
+    assert out["error_code"] is None
+
+
 def test_enrich_status_surfaces_dock_firmware_separately() -> None:
     # Robot firmware lives at attributes.firmware_version; the docking
     # station has its own version under settings[0].docking_version, and

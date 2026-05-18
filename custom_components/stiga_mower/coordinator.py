@@ -284,27 +284,34 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         """
         try:
             async with asyncio.timeout(_UPDATE_TIMEOUT):
+                last_error: Exception | None = None
+
                 # Refresh device list so newly added/removed robots are picked up
                 # without requiring a Home Assistant restart.
                 try:
                     devices = await self.api.get_devices()
                 except StigaApiError as err:
                     _LOGGER.debug("Device list refresh failed, using cached: %s", err)
+                    last_error = err
                 else:
                     if devices:
                         self._devices = devices
-                self._last_rest_success = dt_util.utcnow()
 
                 statuses: dict[str, dict] = {}
                 previous = (self.data or {}).get("statuses", {})
+                status_success = False
+                status_attempted = False
                 for device in self._devices:
                     uuid = _device_uuid(device)
                     if not uuid:
                         continue
+                    status_attempted = True
                     try:
                         status = await self.api.get_device_status(uuid)
+                        status_success = True
                     except StigaApiError as err:
                         _LOGGER.debug("Status fetch for %s failed: %s", uuid, err)
+                        last_error = err
                         status = previous.get(uuid, {})
                     _enrich_status_from_device(status, device)
                     statuses[uuid] = status
@@ -319,6 +326,17 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             if self._meta_next_refresh is None or now >= self._meta_next_refresh:
                 self._meta_next_refresh = now + META_REFRESH_INTERVAL
                 self.hass.async_create_task(self._refresh_meta())
+
+            # The poll is only "successful" if at least one device's status
+            # was fetched fresh. Without this guard, silently-swallowed API
+            # errors would bump `_last_rest_success` every cycle and the
+            # `_STALE_DATA_THRESHOLD` grace would never elapse — entities
+            # would show frozen stale data indefinitely instead of going
+            # unavailable after 10 minutes of cloud failure.
+            if status_attempted and not status_success:
+                return self._handle_poll_failure(
+                    last_error or StigaApiError("all STIGA REST status calls failed silently")
+                )
 
             if self._consecutive_failures >= MAX_CONSECUTIVE_FAILURES:
                 ir.async_delete_issue(self.hass, DOMAIN, _ISSUE_CONNECTION)
@@ -335,37 +353,45 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             raise ConfigEntryAuthFailed from err
 
         except (StigaApiError, TimeoutError) as err:
-            self._consecutive_failures += 1
-            if self._consecutive_failures == MAX_CONSECUTIVE_FAILURES:
-                ir.async_create_issue(
-                    self.hass,
-                    DOMAIN,
-                    _ISSUE_CONNECTION,
-                    is_fixable=False,
-                    severity=ir.IssueSeverity.ERROR,
-                    translation_key=_ISSUE_CONNECTION,
-                    translation_placeholders={
-                        "failures": str(self._consecutive_failures),
-                        "error": str(err),
-                    },
-                )
-            # If we have no data at all (first-run failure), we must raise so
-            # Home Assistant knows the entry is not usable yet.
-            if self.data is None:
-                raise UpdateFailed(f"STIGA API error: {err}") from err
+            return self._handle_poll_failure(err)
 
-            # Otherwise keep the previous data so entities stay visible during
-            # transient cloud outages. Log at warning once per failure streak.
-            # Do not update the timestamp on failures — after 10 minutes of
-            # failures the data will be considered stale.
-            if self._consecutive_failures == 1:
-                _LOGGER.warning(
-                    "STIGA REST poll failed (%s) — keeping last known state. "
-                    "Entities will go unavailable after %s without a successful poll.",
-                    err,
-                    _STALE_DATA_THRESHOLD,
-                )
-            return self.data
+    def _handle_poll_failure(self, err: Exception) -> dict:
+        """Account a failed REST poll: bump failure counter, log, raise/keep.
+
+        The ``_last_rest_success`` timestamp is intentionally *not* touched
+        here — that is what lets `rest_data_fresh` eventually flip to False
+        after `_STALE_DATA_THRESHOLD` of continuous failure, so entities can
+        finally go unavailable instead of showing frozen stale data forever.
+        """
+        self._consecutive_failures += 1
+        if self._consecutive_failures == MAX_CONSECUTIVE_FAILURES:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                _ISSUE_CONNECTION,
+                is_fixable=False,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key=_ISSUE_CONNECTION,
+                translation_placeholders={
+                    "failures": str(self._consecutive_failures),
+                    "error": str(err),
+                },
+            )
+        # If we have no data at all (first-run failure), we must raise so
+        # Home Assistant knows the entry is not usable yet.
+        if self.data is None:
+            raise UpdateFailed(f"STIGA API error: {err}") from err
+
+        # Otherwise keep the previous data so entities stay visible during
+        # transient cloud outages. Log at warning once per failure streak.
+        if self._consecutive_failures == 1:
+            _LOGGER.warning(
+                "STIGA REST poll failed (%s) — keeping last known state. "
+                "Entities will go unavailable after %s without a successful poll.",
+                err,
+                _STALE_DATA_THRESHOLD,
+            )
+        return self.data
 
 
 def _device_uuid(device: dict) -> str:

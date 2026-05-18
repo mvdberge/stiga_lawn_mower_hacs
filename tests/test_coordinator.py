@@ -6,7 +6,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.stiga_mower.api import StigaApiError
 from custom_components.stiga_mower.coordinator import (
+    _STALE_DATA_THRESHOLD,
+    MAX_CONSECUTIVE_FAILURES,
     StigaDataUpdateCoordinator,
     _enrich_status_from_device,
     _extract_perimeter,
@@ -465,3 +468,105 @@ def test_push_for_unknown_mac_is_buffered_but_not_merged(
     assert "STRANGE_MAC" in coordinator._live_status
     # … but nothing leaks into the registered device's merged status.
     assert "current_action" not in coordinator.data["statuses"]["u1"]
+
+
+# ---------------------------------------------------------------- REST failure handling
+
+
+@pytest.fixture
+def rest_coordinator(hass) -> StigaDataUpdateCoordinator:
+    """Coordinator wired with an AsyncMock API for driving _async_update_data."""
+    api = MagicMock()
+    api.get_devices = AsyncMock(
+        return_value=[
+            {"attributes": {"uuid": "u1", "name": "Bumblebee", "mac_address": "MAC1"}},
+        ]
+    )
+    api.get_device_status = AsyncMock(return_value={"has_data": True, "battery_level": 50})
+    api.get_device_extended = AsyncMock(return_value={})
+    api.get_perimeter = AsyncMock(return_value={})
+    entry = MagicMock(data={"email": "e", "password": "p"})
+    return StigaDataUpdateCoordinator(hass, entry, api)
+
+
+async def test_poll_success_bumps_last_rest_success(
+    rest_coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """Successful poll updates the freshness timestamp."""
+    assert rest_coordinator._last_rest_success is None
+    await rest_coordinator.async_refresh()
+    assert rest_coordinator._last_rest_success is not None
+    assert rest_coordinator.rest_data_fresh is True
+    assert rest_coordinator._consecutive_failures == 0
+
+
+async def test_poll_with_all_status_failures_does_not_bump_timestamp(
+    rest_coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """When every per-device status call fails, the poll must count as failed.
+
+    Regression: previously `_last_rest_success` was bumped unconditionally
+    after the (silently-caught) device-list fetch, so `rest_data_fresh`
+    stayed True forever and the 10-minute grace never engaged.
+    """
+    # First a real success to populate data so subsequent failures don't raise.
+    await rest_coordinator.async_refresh()
+    baseline_ts = rest_coordinator._last_rest_success
+
+    rest_coordinator.api.get_device_status = AsyncMock(side_effect=StigaApiError("503"))
+    await rest_coordinator.async_refresh()
+
+    assert rest_coordinator._last_rest_success == baseline_ts  # not bumped
+    assert rest_coordinator._consecutive_failures == 1
+
+
+async def test_consecutive_failures_eventually_marks_data_stale(
+    rest_coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """After `_STALE_DATA_THRESHOLD` of failures, rest_data_fresh flips to False."""
+    await rest_coordinator.async_refresh()
+    rest_coordinator.api.get_device_status = AsyncMock(side_effect=StigaApiError("down"))
+
+    # Backdate the last-success timestamp past the grace window.
+    rest_coordinator._last_rest_success -= _STALE_DATA_THRESHOLD * 2
+    await rest_coordinator.async_refresh()
+
+    assert rest_coordinator.rest_data_fresh is False
+    assert rest_coordinator._consecutive_failures == 1
+
+
+async def test_consecutive_failures_raises_issue_after_threshold(
+    rest_coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """The issue-registry entry is created once MAX_CONSECUTIVE_FAILURES is hit."""
+    await rest_coordinator.async_refresh()
+    rest_coordinator.api.get_device_status = AsyncMock(side_effect=StigaApiError("down"))
+    for _ in range(MAX_CONSECUTIVE_FAILURES):
+        await rest_coordinator.async_refresh()
+    assert rest_coordinator._consecutive_failures == MAX_CONSECUTIVE_FAILURES
+
+
+async def test_partial_status_failure_still_counts_as_success(
+    hass,
+) -> None:
+    """If at least one device's status succeeds, the poll is fresh enough."""
+    api = MagicMock()
+    api.get_devices = AsyncMock(
+        return_value=[
+            {"attributes": {"uuid": "u1", "mac_address": "MAC1"}},
+            {"attributes": {"uuid": "u2", "mac_address": "MAC2"}},
+        ]
+    )
+    api.get_device_status = AsyncMock(
+        side_effect=[StigaApiError("u1 down"), {"has_data": True, "battery_level": 42}]
+    )
+    api.get_device_extended = AsyncMock(return_value={})
+    api.get_perimeter = AsyncMock(return_value={})
+    entry = MagicMock(data={"email": "e", "password": "p"})
+    c = StigaDataUpdateCoordinator(hass, entry, api)
+
+    await c.async_refresh()
+
+    assert c._last_rest_success is not None
+    assert c._consecutive_failures == 0
+    assert c.rest_data_fresh is True

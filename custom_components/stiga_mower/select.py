@@ -198,22 +198,13 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
         wire_value = self.entity_description.option_to_wire.get(option)
         if wire_value is None:
             raise HomeAssistantError(f"Unknown option {option!r}")
-        settings: dict = {self.entity_description.settings_key: wire_value}
-        if self.entity_description.settings_key == "rain_sensor_delay_h":
-            live = self.coordinator.data.get("live_settings", {}).get(self._mac) or {}
-            # The rain submsg is atomic: include the current enabled flag so the
-            # firmware doesn't reset it when only the delay index changes.
-            if (enabled := live.get("rain_sensor_enabled")) is not None:
-                settings["rain_sensor_enabled"] = enabled
-            # The app always sends zone_cutting_height_enabled alongside any
-            # rain-sensor write (cutting submsg is also atomic on this firmware).
-            # Also bundle cutting_height_mm: the cutting submsg (field 4) is an
-            # atomic write, so sending {4:{1:zone}} without {4:{2:height_idx}}
-            # resets cutting height to the proto3 default (index 0 = 20 mm).
-            if (zch := live.get("zone_cutting_height_enabled")) is not None:
-                settings["zone_cutting_height_enabled"] = zch
-                if (cutting_h := live.get("cutting_height_mm")) is not None:
-                    settings["cutting_height_mm"] = cutting_h
+        # cmd_settings_update is more strictly atomic than it appears: any
+        # write omitting the rain/cutting submessages resets them on the
+        # firmware to default — even when the write targets a different
+        # submsg. Bundling is centralized in the coordinator.
+        settings = self.coordinator.build_settings_payload(
+            self._mac, {self.entity_description.settings_key: wire_value}
+        )
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:

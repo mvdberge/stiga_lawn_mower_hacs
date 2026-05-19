@@ -1,6 +1,8 @@
 # Python environment
 - Use .venv as python environment
 
+# 
+
 # Testing
 - Keep all local tests in-line with the code
 - Before commiting, perform all local tests
@@ -16,7 +18,7 @@ STIGA firmware uses proto3 encoding: scalar fields at their wire default (0 / Fa
 Empirically established via `capture/inject_settings.py` (raw capture in `capture/bug2_capture.jsonl`):
 - After `SETTINGS_UPDATE` the firmware emits multiple identical `LOG/SETTINGS` frames **unsolicited** — no follow-up `SETTINGS_REQUEST` is needed.
 - Each frame is a **complete snapshot** of all non-default fields, not a partial frame containing only the touched field. Absence of a submsg = the entire submsg is at default.
-- `cmd_settings_update` is nevertheless **atomic per submsg** in several places: for the rain and cutting submessages (fields 1 and 4) every sibling field must be re-sent, otherwise omitted siblings revert to default. See bundling logic in `switch.py:_send`, `select.py:async_select_option`, `number.py:async_set_native_value`.
+- `cmd_settings_update` is **globally atomic for rain (field 1) and cutting (field 4)**: every outbound write must carry the current rain and cutting submessages, *even when the write touches a completely unrelated submsg* (e.g. `push_notifications` field 14, `obstacle_notifications` field 15, `long_exit`). If rain/cutting are omitted, the firmware resets them to proto3 default. Sibling fields within rain (`enabled`, `delay_h`) and within cutting (`zone_cutting_height_enabled`, `cutting_height_mm`) must likewise be bundled together. Use `coordinator.build_settings_payload(mac, changes)` as the single bundling point — never inline this logic in entity platforms.
 - `SCHEDULING_SETTINGS_UPDATE` (cmd 20) is **atomic as a whole**: field 1 (enabled) and field 2 (blob) must always be sent together, otherwise the omitted field is reset to its default. `cmd_schedule_set_enabled(mac, enabled, blob=blob)` is the only safe path.
 
 # Release

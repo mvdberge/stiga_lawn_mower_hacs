@@ -300,11 +300,13 @@ async def test_switch_rain_enable_includes_delay_and_zch(hass) -> None:
 
 
 @pytest.mark.asyncio
-async def test_switch_rain_disable_includes_zch_not_delay(hass) -> None:
-    """Deactivating rain sensor: enabled flag + zch + cutting_height_mm bundled.
+async def test_switch_rain_disable_bundles_all_rain_and_cutting(hass) -> None:
+    """Deactivating rain sensor bundles delay + zch + cutting_height_mm.
 
-    Delay is omitted on disable (rain submsg atomic: enabled=False resets delay
-    to default anyway). Cutting submsg still needs height to avoid 20 mm reset.
+    cmd_settings_update is more strictly atomic than it appears: any write
+    omitting the rain/cutting submessages resets them server-side to default.
+    build_settings_payload therefore bundles both submessages unconditionally,
+    regardless of whether enabled is transitioning to True or False.
     """
     c = _make_coordinator(
         hass,
@@ -321,6 +323,7 @@ async def test_switch_rain_disable_includes_zch_not_delay(hass) -> None:
         "MAC1",
         {
             "rain_sensor_enabled": False,
+            "rain_sensor_delay_h": 12,
             "zone_cutting_height_enabled": True,
             "cutting_height_mm": 50,
         },

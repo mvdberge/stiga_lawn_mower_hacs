@@ -340,6 +340,55 @@ def test_settings_rain_disable_via_app_clears_live_settings(
     assert coordinator.data["live_settings"]["MAC1"]["rain_sensor_enabled"] is False
 
 
+def test_build_settings_payload_bundles_rain_and_cutting(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """Writes to an unrelated setting must carry rain/cutting state along.
+
+    cmd_settings_update is globally atomic on the firmware: without rain/cutting
+    in the outbound payload these submessages get reset to their proto3 default
+    server-side — even when the write targets e.g. push_notifications (field 14)
+    or obstacle_notifications (field 15). build_settings_payload bundles the
+    current rain/cutting values from live_settings so this cannot happen.
+    """
+    coordinator._on_mqtt_settings(
+        "MAC1",
+        {
+            "rain_sensor_enabled": True,
+            "rain_sensor_delay_h": 8,
+            "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 40,
+        },
+    )
+
+    payload = coordinator.build_settings_payload("MAC1", {"push_notifications": True})
+    assert payload == {
+        "push_notifications": True,
+        "rain_sensor_enabled": True,
+        "rain_sensor_delay_h": 8,
+        "zone_cutting_height_enabled": True,
+        "cutting_height_mm": 40,
+    }
+
+
+def test_build_settings_payload_caller_keys_take_precedence(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """Explicit caller values must not be overridden by live_settings."""
+    coordinator._on_mqtt_settings("MAC1", {"rain_sensor_enabled": True})
+
+    payload = coordinator.build_settings_payload("MAC1", {"rain_sensor_enabled": False})
+    assert payload["rain_sensor_enabled"] is False
+
+
+def test_build_settings_payload_skips_missing_live_keys(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """Keys absent from live_settings stay absent from the payload."""
+    payload = coordinator.build_settings_payload("MAC1", {"long_exit": True})
+    assert payload == {"long_exit": True}
+
+
 def test_schedule_push_lands_in_live_schedule(
     coordinator: StigaDataUpdateCoordinator,
 ) -> None:

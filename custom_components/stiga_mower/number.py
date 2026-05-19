@@ -159,14 +159,11 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
                 f"Cannot set {self.entity_description.key}: MQTT not connected"
             )
         key = self.entity_description.settings_key
-        settings: dict = {key: int(value)}
-        if key == "cutting_height_mm":
-            live = self.coordinator.data.get("live_settings", {}).get(self._mac) or {}
-            # The cutting submsg (field 4) is an atomic write on the firmware:
-            # omitting 4.1 resets zone_cutting_height_enabled to its proto3
-            # default (False). Bundle the current value alongside the height.
-            if (zch := live.get("zone_cutting_height_enabled")) is not None:
-                settings["zone_cutting_height_enabled"] = zch
+        # cmd_settings_update is more strictly atomic than it appears: any
+        # write omitting the rain/cutting submessages resets them on the
+        # firmware to default — even when the write targets a different
+        # submsg. Bundling is centralized in the coordinator.
+        settings = self.coordinator.build_settings_payload(self._mac, {key: int(value)})
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:

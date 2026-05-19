@@ -1,5 +1,16 @@
 # Changelog
 
+## [2.4.3] - 2026-05-19
+
+### Fixed
+
+- **Toggling any non-rain/non-cutting setting silently reset rain delay and cutting height** — empirically `cmd_settings_update` is globally atomic for the rain submsg (field 1) and the cutting submsg (field 4): any outbound write that omits these submessages causes the firmware to reset their fields to the proto3 default, *even when the write targets a completely unrelated submsg* (e.g. `push_notifications`, `obstacle_notifications`, `long_exit`). Previously only the rain/cutting entity platforms bundled the sibling fields; flipping any other switch would wipe the configured rain delay back to 4 h and cutting height back to 20 mm. Bundling is now centralized in `coordinator.build_settings_payload()` and applied to every settings write from `switch`, `select` and `number` platforms.
+
+### Internal
+
+- New regression tests in `tests/test_coordinator.py` cover the bundling helper (caller precedence, missing live_settings keys, unrelated-submsg writes).
+- `.claude/CLAUDE.md` updated with the global-atomicity finding.
+
 ## [2.4.2] - 2026-05-18
 
 ### Fixed

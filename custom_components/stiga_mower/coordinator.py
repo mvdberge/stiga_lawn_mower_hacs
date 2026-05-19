@@ -145,6 +145,29 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._live_position[mac] = data
         self._publish_update()
 
+    def build_settings_payload(self, mac: str, changes: dict[str, Any]) -> dict[str, Any]:
+        """Augment a settings update with the atomic rain/cutting sibling fields.
+
+        cmd_settings_update treats the rain submsg (field 1) and the cutting
+        submsg (field 4) as globally atomic: if they are missing from an
+        outbound payload, the firmware resets their fields to the proto3
+        default. Empirically this also fires when the write targets a
+        completely unrelated submsg (e.g. push_notifications field 14).
+        This helper backfills the rain/cutting keys from live_settings
+        whenever they are known and not already set explicitly by the caller.
+        """
+        live = self._live_settings.get(mac, {})
+        payload = dict(changes)
+        for key in (
+            "rain_sensor_enabled",
+            "rain_sensor_delay_h",
+            "zone_cutting_height_enabled",
+            "cutting_height_mm",
+        ):
+            if key not in payload and (cur := live.get(key)) is not None:
+                payload[key] = cur
+        return payload
+
     def apply_live_settings(self, mac: str, settings: dict[str, Any]) -> None:
         """Optimistically merge settings into live_settings and notify listeners.
 

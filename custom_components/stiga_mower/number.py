@@ -49,7 +49,7 @@ NUMBER_DESCRIPTIONS: tuple[StigaNumberDescription, ...] = (
         native_min_value=min(CUTTING_HEIGHTS_MM),
         native_max_value=max(CUTTING_HEIGHTS_MM),
         native_step=5,
-        mode=NumberMode.BOX,
+        mode=NumberMode.SLIDER,
         entity_category=EntityCategory.CONFIG,
     ),
 )

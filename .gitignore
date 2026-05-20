@@ -1,6 +1,7 @@
 login.secret
 *.secret
 capture/
+copy_files_ha.sh
 
 # Internal endpoint reference (contains undocumented API details and example
 # responses with personal UUIDs/MAC addresses) — do not publish.

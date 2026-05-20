@@ -13,6 +13,7 @@ from .const import CONF_EMAIL, CONF_PASSWORD
 
 REDACT_ENTRY_DATA = {CONF_EMAIL, CONF_PASSWORD}
 REDACT_DEVICE_FIELDS = {"serial_number", "uuid", "name"}
+REDACT_BASE_FIELDS = {"serial_number", "uuid", "mac_address"}
 
 
 def _redact_devices(devices: list[dict]) -> list[dict]:
@@ -23,6 +24,18 @@ def _redact_devices(devices: list[dict]) -> list[dict]:
             if field in attrs:
                 attrs[field] = "**REDACTED**"
         redacted.append({**device, "attributes": attrs})
+    return redacted
+
+
+def _redact_bases(bases: list[dict]) -> list[dict]:
+    """Redact PII-like fields on base-station records (REST snapshot)."""
+    redacted: list[dict] = []
+    for base in bases:
+        copy = dict(base)
+        for field in REDACT_BASE_FIELDS:
+            if field in copy and copy[field] is not None:
+                copy[field] = "**REDACTED**"
+        redacted.append(copy)
     return redacted
 
 
@@ -47,6 +60,12 @@ async def async_get_config_entry_diagnostics(
         # collapsed to a single entry — keeping a list preserves the
         # full picture without leaking identifiers.
         "statuses": list(data.get("statuses", {}).values()),
+        # Base-station REST snapshot + live MQTT decodes. The MAC keys in
+        # live_base_* dicts are dropped (PII) — the inner dicts carry every
+        # decoded field already, so the keying is redundant for diagnostics.
+        "bases": _redact_bases(data.get("bases", [])),
+        "live_base_status": list(data.get("live_base_status", {}).values()),
+        "live_base_version": list(data.get("live_base_version", {}).values()),
     }
 
 

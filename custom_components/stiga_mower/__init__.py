@@ -20,7 +20,6 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
-    Platform.DEVICE_TRACKER,
     Platform.LAWN_MOWER,
     Platform.NUMBER,
     Platform.SELECT,
@@ -121,7 +120,27 @@ def _build_mqtt(
     mqtt = StigaMQTT(hass, api.get_token, broker_id=broker_id)
     for mac in macs:
         mqtt.add_robot(mac)
+    # Register paired base stations so {base_mac}/LOG/+ frames get dispatched.
+    # `/api/garage` `included[OwnBases]` populates the real MAC for richer
+    # bases (Vision Cam, Smart Base); plain UBLOXGNSS RTK references report
+    # the literal string "UBLOXGNSS" as mac_address, which would result in an
+    # impossible MQTT topic, so we skip anything that isn't a colon-separated
+    # MAC. Without a real MAC nothing can ever arrive over MQTT.
+    for base in (coordinator.data or {}).get("bases", []):
+        base_mac = base.get("mac_address")
+        if _is_real_mac(base_mac):
+            mqtt.add_base(base_mac)
     return mqtt
+
+
+def _is_real_mac(value: object) -> bool:
+    """Heuristic for the STIGA cloud's MAC field.
+
+    UBLOXGNSS RTK bases report `mac_address: "UBLOXGNSS"` instead of an
+    actual MAC. A real MAC is six colon-separated octets — we require the
+    colon to be present and a minimum length to filter the placeholder.
+    """
+    return isinstance(value, str) and ":" in value and len(value) >= 11
 
 
 def _make_unload(mqtt: StigaMQTT | None):

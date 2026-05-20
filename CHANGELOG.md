@@ -1,5 +1,31 @@
 # Changelog
 
+## [2.5.0] - 2026-05-20
+
+### Removed
+
+- `cutting_mode` select, `device_tracker.position`, `sensor.cutting_height` (writable `number.cutting_height` remains), `button.refresh_status` — low-value entities; position never produced real coordinates on most setups.
+
+### Added
+
+- Base-station REST + MQTT wiring: `/api/garage?relationships=base,connpack` surfaces `included[OwnBases]` into `coordinator.data["bases"]`; `add_base()` is invoked for bases with a real MAC; `decode_base_status` now parses location + network sub-messages; new `decode_base_version` handles `LOG/VERSION` frames. Diagnostics dump exposes `bases`, `live_base_status`, `live_base_version`.
+
+### Fixed
+
+- Spurious `STATUS frame for unregistered robot MAC` warning on every status frame (inner `not {}` check was always true and redundant with the outer dispatch guard).
+- README's platform table referenced `device_tracker` and `calendar`, neither of which the integration registers any longer.
+
+### Changed
+
+- Diagnostic battery sensors renamed so every label starts with `Battery` (EN) / `Batterie` (DE) — consistent alphabetical sorting in the HA UI.
+- Progress sensors renamed `Zone/Garden Progress` → `Progress Zone/Garden` (DE: `Fortschritt Zone/Garten`) so they sort adjacent.
+
+### Internal
+
+- New `tests/test_compliance.py` codifies the four wire-level invariants from `.claude/CLAUDE.md` as cross-cutting regression tests: every settings-bound entity bundles the atomic rain/cutting siblings; `decode_settings` never invents sibling defaults from absent sub-messages; `encode_schedule_enabled` keeps `enabled`+`blob` paired and every call site passes `blob=` explicitly; every write-path also calls `apply_live_settings` / `apply_live_schedule`.
+- Test files restructured 1:1 against source modules: `test_phase5_commands.py` split into per-platform files (`test_switch.py`, `test_select.py`, `test_number.py`, `test_button.py`, `test_lawn_mower.py`); `test_calendar.py` → `test_schedule_manager.py`; `test_sensor_phase4.py` → `test_sensor.py`. Shared entity builders moved to `tests/_entity_helpers.py`.
+- Removed dead decode paths for `long_exit_mode` and `zone_cutting_height_uniform` — both were parsed from SETTINGS frames but had no consumer entity and no encoder counterpart.
+
 ## [2.4.3] - 2026-05-19
 
 ### Fixed

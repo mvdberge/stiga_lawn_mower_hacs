@@ -26,7 +26,6 @@ PARALLEL_UPDATES = 1
 
 class _ButtonAction(StrEnum):
     CALIBRATE_BLADES = "calibrate_blades"
-    REFRESH_STATUS = "refresh_status"
     RESET_ERROR = "reset_error"
 
 
@@ -37,7 +36,7 @@ class StigaButtonDescription(ButtonEntityDescription):
     `action`: which command to publish when pressed.
     """
 
-    action: _ButtonAction = _ButtonAction.REFRESH_STATUS
+    action: _ButtonAction = _ButtonAction.RESET_ERROR
 
 
 BUTTON_DESCRIPTIONS: tuple[StigaButtonDescription, ...] = (
@@ -46,13 +45,6 @@ BUTTON_DESCRIPTIONS: tuple[StigaButtonDescription, ...] = (
         translation_key="calibrate_blades",
         action=_ButtonAction.CALIBRATE_BLADES,
         entity_category=EntityCategory.CONFIG,
-        entity_registry_enabled_default=False,
-    ),
-    StigaButtonDescription(
-        key="refresh_status",
-        translation_key="refresh_status",
-        action=_ButtonAction.REFRESH_STATUS,
-        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
     ),
     StigaButtonDescription(
@@ -147,8 +139,6 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
         try:
             if action == _ButtonAction.CALIBRATE_BLADES:
                 await mqtt.cmd_calibrate_blades(self._mac)
-            elif action == _ButtonAction.REFRESH_STATUS:
-                await mqtt.request_status(self._mac)
             elif action == _ButtonAction.RESET_ERROR:
                 await mqtt.cmd_reset_error(self._mac)
         except Exception as err:

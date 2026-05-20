@@ -51,10 +51,11 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         "meta":     { "<uuid>": { "model_name": "A 15v",
                                   "garden_area_m2": 656, ... }, ... },
         "mqtt_connected": bool,
-        "live_position": { "<mac>": {"lat_offset_m": ..., "lon_offset_m": ..., ...} },
         "live_settings": { "<mac>": {...} },
         "live_schedule": { "<mac>": {...} },
         "live_base_status": { "<base_mac>": {...} },
+        "live_base_version": { "<base_mac>": {...} },
+        "bases": [ { "uuid": ..., "mac_address": ..., "firmware_version": ..., ... }, ... ],
     }
 
     The coordinator is push-driven for MQTT frames (each frame triggers
@@ -82,10 +83,12 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         # their own buckets so the entity layer (Phase 4 onwards) can pick
         # them up without reaching back into raw protobuf.
         self._live_status: dict[str, dict[str, Any]] = {}
-        self._live_position: dict[str, dict[str, Any]] = {}
         self._live_settings: dict[str, dict[str, Any]] = {}
         self._live_schedule: dict[str, dict[str, Any]] = {}
         self._live_base_status: dict[str, dict[str, Any]] = {}
+        self._live_base_version: dict[str, dict[str, Any]] = {}
+        # REST-side base-station snapshot (from /api/garage included[OwnBases]).
+        self._bases: list[dict[str, Any]] = []
         self._mqtt_connected: bool = False
 
         # Timestamp of the last successful REST poll. Used to decide whether
@@ -121,10 +124,10 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self.mqtt = mqtt
         mqtt.set_handlers(
             on_status=self._on_mqtt_status,
-            on_position=self._on_mqtt_position,
             on_settings=self._on_mqtt_settings,
             on_schedule=self._on_mqtt_schedule,
             on_base_status=self._on_mqtt_base_status,
+            on_base_version=self._on_mqtt_base_version,
             on_connection_change=self._on_mqtt_connected,
         )
 
@@ -139,10 +142,6 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         # temperature etc. don't flicker to "unavailable" between full frames.
         prev = self._live_status.get(mac, {})
         self._live_status[mac] = _merge_sticky_live(prev, data) if data else prev
-        self._publish_update()
-
-    def _on_mqtt_position(self, mac: str, data: dict[str, Any]) -> None:
-        self._live_position[mac] = data
         self._publish_update()
 
     def build_settings_payload(self, mac: str, changes: dict[str, Any]) -> dict[str, Any]:
@@ -217,7 +216,17 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._publish_update()
 
     def _on_mqtt_base_status(self, mac: str, data: dict[str, Any]) -> None:
-        self._live_base_status[mac] = data
+        # BASE STATUS frames carry top-level status (type/flag/led) plus
+        # location/network sub-messages. Merge so a status-only frame does
+        # not wipe previously seen location/network values.
+        if data:
+            self._live_base_status[mac] = {**self._live_base_status.get(mac, {}), **data}
+        else:
+            self._live_base_status.setdefault(mac, {})
+        self._publish_update()
+
+    def _on_mqtt_base_version(self, mac: str, data: dict[str, Any]) -> None:
+        self._live_base_version[mac] = data
         self._publish_update()
 
     def _on_mqtt_connected(self, connected: bool) -> None:
@@ -263,10 +272,11 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             "statuses": statuses,
             "meta": self._meta,
             "mqtt_connected": self._mqtt_connected,
-            "live_position": dict(self._live_position),
             "live_settings": dict(self._live_settings),
             "live_schedule": dict(self._live_schedule),
             "live_base_status": dict(self._live_base_status),
+            "live_base_version": dict(self._live_base_version),
+            "bases": list(self._bases),
         }
 
     async def _async_setup(self) -> None:
@@ -275,6 +285,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         if not self._devices:
             raise UpdateFailed("No STIGA devices found for this account.")
         await self._refresh_meta()
+        self._bases = await self.api.get_bases()
         self._meta_next_refresh = dt_util.utcnow() + META_REFRESH_INTERVAL
 
     async def _refresh_meta(self) -> None:
@@ -297,6 +308,21 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                 entry.update(_extract_perimeter(perimeter))
             if entry:
                 self._meta[uuid] = entry
+
+    async def _refresh_bases(self) -> None:
+        """Best-effort refresh of the base-station list from /api/garage.
+
+        Bases are static-ish (firmware version, broker_id) so we fetch them
+        on the same schedule as meta. Failure is non-fatal: keep the
+        cached list rather than wiping it on a transient cloud hiccup.
+        """
+        try:
+            bases = await self.api.get_bases()
+        except StigaApiError as err:
+            _LOGGER.debug("Base list refresh failed, keeping cached: %s", err)
+            return
+        if bases:
+            self._bases = bases
 
     async def _async_update_data(self) -> dict:
         """Refresh devices and status for all known devices.
@@ -351,6 +377,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             if self._meta_next_refresh is None or now >= self._meta_next_refresh:
                 self._meta_next_refresh = now + META_REFRESH_INTERVAL
                 self.hass.async_create_task(self._refresh_meta())
+                self.hass.async_create_task(self._refresh_bases())
 
             # The poll is only "successful" if at least one device's status
             # was fetched fresh. Without this guard, silently-swallowed API

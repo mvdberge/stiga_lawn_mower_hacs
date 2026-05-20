@@ -204,7 +204,7 @@ automation:
 | Token refresh | Every 50 min (token TTL 60 min) |
 | REST polling | Every 30 s (liveness) + every 6 h (full refresh) |
 | MQTT | Push-driven, reconnects automatically |
-| Platforms | `lawn_mower`, `sensor`, `binary_sensor`, `number`, `switch`, `select`, `calendar`, `device_tracker`, `button` |
+| Platforms | `lawn_mower`, `sensor`, `binary_sensor`, `number`, `switch`, `select`, `button` (calendar surfaced via `StigaScheduleManager`, not as a HA platform) |
 | Minimum HA version | 2024.4.0 |
 
 ### Schedule Wire Format

@@ -226,10 +226,8 @@ def _encode_one(out: bytearray, field: int, value: Any) -> None:
 def read_double_le(value: bytes | None) -> float | None:
     """Reinterpret an 8-byte FIXED64 payload as IEEE 754 double (little-endian).
 
-    Used for GPS lat/lon offsets and orientation in `LOG/ROBOT_POSITION` and
-    the location subfields of `LOG/STATUS`. Returns ``None`` for missing or
-    malformed input rather than raising — these fields can legitimately be
-    absent on inactive mowers.
+    Returns ``None`` for missing or malformed input rather than raising —
+    these fields can legitimately be absent on inactive mowers.
     """
     if not isinstance(value, (bytes, bytearray)) or len(value) != 8:
         return None

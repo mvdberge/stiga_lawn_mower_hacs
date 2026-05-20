@@ -1,4 +1,4 @@
-"""Tests for Phase 4 sensor additions (MQTT-live sensors)."""
+"""Tests for the StigaSensor entity (MQTT-live sensors)."""
 
 from __future__ import annotations
 

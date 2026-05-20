@@ -18,7 +18,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import StigaConfigEntry
 from .const import DOMAIN, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
-from .mqtt_constants import CUTTING_MODES, RAIN_DELAYS_HOURS
+from .mqtt_constants import RAIN_DELAYS_HOURS
 from .mqtt_messages import pack_schedule
 
 _LOGGER = logging.getLogger(__name__)
@@ -42,9 +42,7 @@ class StigaSelectDescription(SelectEntityDescription):
     # live_settings entry. STIGA's firmware uses proto3 encoding, which omits
     # scalar fields whose value equals the wire default (varint 0). Without
     # this fallback the dependent select stays permanently unavailable as
-    # long as the setting sits at its default value. Leave ``None`` for
-    # selects whose wire index 0 is not a valid option (e.g. cutting_mode,
-    # which is not decoded from SETTINGS today).
+    # long as the setting sits at its default value.
     wire_default: Any = None
 
 
@@ -53,16 +51,6 @@ def _reverse(d: dict) -> dict:
 
 
 SELECT_DESCRIPTIONS: tuple[StigaSelectDescription, ...] = (
-    StigaSelectDescription(
-        key="cutting_mode",
-        translation_key="cutting_mode",
-        settings_key="cutting_mode",
-        options=list(CUTTING_MODES),
-        option_to_wire=dict(CUTTING_MODES),
-        wire_to_option=_reverse(CUTTING_MODES),
-        entity_category=EntityCategory.CONFIG,
-        entity_registry_enabled_default=False,
-    ),
     StigaSelectDescription(
         key="rain_sensor_delay",
         translation_key="rain_sensor_delay",

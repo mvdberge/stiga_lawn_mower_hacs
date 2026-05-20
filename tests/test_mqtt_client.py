@@ -76,30 +76,6 @@ def test_dispatch_robot_status_invokes_callback(client: mc_mod.StigaMQTT) -> Non
     assert data == {"status_valid": True, "status_type": "DOCKED"}
 
 
-def test_dispatch_robot_position_invokes_callback(client: mc_mod.StigaMQTT) -> None:
-    received: list[tuple[str, dict]] = []
-    client.set_handlers(on_position=lambda mac, data: received.append((mac, data)))
-
-    # Build a position frame manually (FIXED64 fields not emittable via codec)
-    import struct
-
-    payload = b""
-    for field, value in [(1, 1.0), (2, 2.0), (3, 0.5)]:
-        payload += bytes([(field << 3) | 1]) + struct.pack("<d", value)
-    client._dispatch(f"{ROBOT_MAC}/LOG/ROBOT_POSITION", payload)
-
-    assert received == [
-        (
-            ROBOT_MAC,
-            {
-                "lon_offset_m": 1.0,
-                "lat_offset_m": 2.0,
-                "orientation_rad": 0.5,
-            },
-        )
-    ]
-
-
 def test_dispatch_settings_invokes_callback(client: mc_mod.StigaMQTT) -> None:
     received: list = []
     client.set_handlers(on_settings=lambda mac, data: received.append((mac, data)))
@@ -145,6 +121,19 @@ def test_dispatch_base_status_routes_to_base_handler(client: mc_mod.StigaMQTT) -
     assert robot_received == []
     assert base_received[0][0] == BASE_MAC
     assert base_received[0][1]["status_type"] == "PUBLISHING_CORRECTIONS"
+
+
+def test_dispatch_base_version_routes_to_base_version_handler(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    received: list = []
+    client.set_handlers(on_base_version=lambda *a: received.append(a))
+
+    payload = pb.encode({1: b"\x00\x00\x05", 2: b"\x01\x02\x03"})
+    client._dispatch(f"{BASE_MAC}/LOG/VERSION", payload)
+
+    assert received[0][0] == BASE_MAC
+    assert received[0][1] == {"hardware": "0.0.5", "firmware": "1.2.3"}
 
 
 def test_dispatch_notification_decodes_json(client: mc_mod.StigaMQTT) -> None:

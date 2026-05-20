@@ -57,11 +57,14 @@
   },
   "entity": {
     "sensor": {
-      "battery_cycles":      { "name": "Ladezyklen" },
-      "battery_health":      { "name": "Batteriezustand" },
       "battery_capacity":    { "name": "Batteriekapazität" },
-      "battery_remaining":   { "name": "Verbleibende Kapazität" },
-      "cutting_height":      { "name": "Schnitthöhe" },
+      "battery_current":     { "name": "Batteriestrom" },
+      "battery_cycles":      { "name": "Batterieladezyklen" },
+      "battery_health":      { "name": "Batteriegesundheit" },
+      "battery_power":       { "name": "Batterieleistung" },
+      "battery_remaining":   { "name": "Batterierestkapazität" },
+      "battery_time_left":   { "name": "Batterierestlaufzeit" },
+      "battery_voltage":     { "name": "Batteriespannung" },
       "dock_firmware":       { "name": "Firmware Ladestation" },
       "garden_area":         { "name": "Gartenfläche" },
       "zone_count":          { "name": "Zonen" },
@@ -69,8 +72,8 @@
       "obstacle_count":      { "name": "Hindernisse" },
       "obstacle_area":       { "name": "Hindernisfläche" },
       "current_zone":        { "name": "Aktuelle Zone" },
-      "zone_completed_pct":  { "name": "Zonenfortschritt" },
-      "garden_completed_pct":{ "name": "Gartenfortschritt" },
+      "zone_completed_pct":  { "name": "Fortschritt Zone" },
+      "garden_completed_pct":{ "name": "Fortschritt Garten" },
       "satellites":          { "name": "GPS-Satelliten" },
       "rsrp":                { "name": "RSRP" },
       "rsrq":                { "name": "RSRQ" }
@@ -86,9 +89,6 @@
       "battery_charging":{ "name": "Lädt" },
       "error_active":    { "name": "Fehler" }
     },
-    "device_tracker": {
-      "position": { "name": "Position" }
-    },
     "number": {
       "cutting_height": { "name": "Schnitthöhe" }
     },
@@ -102,15 +102,6 @@
       "long_exit":              { "name": "Langer Ausgang" }
     },
     "select": {
-      "cutting_mode": {
-        "name": "Schnittmuster",
-        "state": {
-          "dense_grid":  "Dichtes Raster",
-          "chess_board": "Schachbrett",
-          "north_south": "Nord-Süd",
-          "east_west":   "Ost-West"
-        }
-      },
       "rain_sensor_delay": {
         "name": "Regenverzögerung",
         "state": {
@@ -129,7 +120,6 @@
     },
     "button": {
       "calibrate_blades": { "name": "Messer kalibrieren" },
-      "refresh_status":   { "name": "Status aktualisieren" },
       "reset_error":      { "name": "Fehler zurücksetzen" }
     },
     "calendar": {

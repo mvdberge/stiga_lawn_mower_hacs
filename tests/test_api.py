@@ -97,3 +97,43 @@ async def test_post_returns_parsed_json_on_success():
     result = await api._post("/fake")
 
     assert result == {"ok": True}
+
+
+# ---------------------------------------------------------------- _extract_bases
+
+
+def test_extract_bases_from_garage_included() -> None:
+    """OwnBases entries in `included[]` are surfaced with the JSONAPI `id`
+    promoted to `uuid` when missing from `attributes`."""
+    raw = {
+        "data": [{"type": "devices", "id": "dev-1"}],
+        "included": [
+            {
+                "type": "OwnBases",
+                "id": "base-id-1",
+                "attributes": {
+                    "product_code": "UBLOXGNSS",
+                    "serial_number": "UBLOXGNSS",
+                    "mac_address": "UBLOXGNSS",
+                    "firmware_version": None,
+                    "broker_id": None,
+                },
+            },
+            {
+                "type": "ConnPacks",
+                "id": "pack-1",
+                "attributes": {"status": "active"},
+            },
+        ],
+    }
+    bases = StigaAPI._extract_bases(raw)
+    assert len(bases) == 1
+    assert bases[0]["uuid"] == "base-id-1"
+    assert bases[0]["mac_address"] == "UBLOXGNSS"
+    assert bases[0]["product_code"] == "UBLOXGNSS"
+
+
+def test_extract_bases_returns_empty_for_missing_included() -> None:
+    assert StigaAPI._extract_bases({"data": []}) == []
+    assert StigaAPI._extract_bases([]) == []
+    assert StigaAPI._extract_bases(None) == []

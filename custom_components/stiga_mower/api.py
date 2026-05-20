@@ -178,6 +178,55 @@ class StigaAPI:
             return [raw]
         return []
 
+    async def get_bases(self) -> list[dict]:
+        """Return base-station records from /garage `included[OwnBases]`.
+
+        Each entry is the flat `attributes` dict (uuid, mac_address,
+        product_code, serial_number, firmware_version, created_at,
+        broker_id, …) with `uuid` filled from the JSONAPI `id`. The cloud
+        only emits `included[]` when the request asks for relationships
+        explicitly — `/api/garage` alone omits the section even though
+        every device has a populated `base_uuid`. Undocumented endpoint;
+        returns `[]` when /garage is unavailable.
+        """
+        try:
+            raw = await self._get(f"{EP_GARAGE_FULL}?relationships=base,connpack")
+        except StigaApiError as err:
+            _LOGGER.debug("/garage unavailable for bases extraction: %s", err)
+            return []
+        bases = self._extract_bases(raw)
+        if not bases and isinstance(raw, dict):
+            # Help diagnose responses that come back without the expected
+            # OwnBases type — different accounts may report bases under a
+            # different `type` (e.g. richer Vision Cam / Smart Base SKUs).
+            included = raw.get("included")
+            if isinstance(included, list):
+                types = sorted({i.get("type") for i in included if isinstance(i, dict)})
+                _LOGGER.debug("/garage included[] types: %s", types or "<none>")
+            else:
+                _LOGGER.debug("/garage response has no included[] section")
+        return bases
+
+    @staticmethod
+    def _extract_bases(raw) -> list[dict]:
+        if not isinstance(raw, dict):
+            return []
+        included = raw.get("included")
+        if not isinstance(included, list):
+            return []
+        out: list[dict] = []
+        for item in included:
+            if not isinstance(item, dict) or item.get("type") != "OwnBases":
+                continue
+            attrs = item.get("attributes")
+            if not isinstance(attrs, dict):
+                continue
+            entry = dict(attrs)
+            if (item_id := item.get("id")) and "uuid" not in entry:
+                entry["uuid"] = item_id
+            out.append(entry)
+        return out
+
     async def get_device_extended(self, uuid: str) -> dict:
         """GET /devices/{uuid} – richer per-device record with `included[]`.
 

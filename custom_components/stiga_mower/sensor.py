@@ -18,7 +18,6 @@ from homeassistant.const import (
     UnitOfArea,
     UnitOfElectricCurrent,
     UnitOfElectricPotential,
-    UnitOfLength,
     UnitOfPower,
     UnitOfTime,
 )
@@ -80,6 +79,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_time_left",
         status_key="battery_time_left",
+        translation_key="battery_time_left",
         native_unit_of_measurement=UnitOfTime.MINUTES,
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,
@@ -88,6 +88,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_power_w",
         status_key="battery_power_w",
+        translation_key="battery_power",
         native_unit_of_measurement=UnitOfPower.WATT,
         device_class=SensorDeviceClass.POWER,
         state_class=SensorStateClass.MEASUREMENT,
@@ -105,6 +106,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_voltage",
         status_key="battery_voltage",
+        translation_key="battery_voltage",
         native_unit_of_measurement=UnitOfElectricPotential.VOLT,
         device_class=SensorDeviceClass.VOLTAGE,
         state_class=SensorStateClass.MEASUREMENT,
@@ -114,6 +116,7 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
     StigaSensorDescription(
         key="battery_current",
         status_key="battery_current",
+        translation_key="battery_current",
         native_unit_of_measurement=UnitOfElectricCurrent.AMPERE,
         device_class=SensorDeviceClass.CURRENT,
         state_class=SensorStateClass.MEASUREMENT,
@@ -142,16 +145,6 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         native_unit_of_measurement="mAh",
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
-        suggested_display_precision=0,
-    ),
-    # Cutting height as configured in the STIGA.GO app. Read-only — writing
-    # would require MQTT, which this integration does not implement.
-    StigaSensorDescription(
-        key="cutting_height",
-        status_key="cutting_height_mm",
-        translation_key="cutting_height",
-        native_unit_of_measurement=UnitOfLength.MILLIMETERS,
-        state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=0,
     ),
     # Docking-station firmware (`attributes.settings[0].docking_version`).

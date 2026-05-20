@@ -103,7 +103,6 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         )
         _set_if_present(out, "satellites", location, 2)
         # 19.3 and 19.4 are accuracy/dilution metrics, NOT position offsets.
-        # Position comes from the separate ROBOT_POSITION topic.
         # 19.5 = RTK quality % (Survey-In progress, 0–100)
         _set_if_present(out, "rtk_quality_pct", location, 5)
         # 19.6 = RTK fix type (4 = RTK fixed)
@@ -125,32 +124,6 @@ def decode_status(payload: bytes) -> dict[str, Any]:
             out["signal_quality_pct"] = sq
         _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
 
-    return out
-
-
-# ---------------------------------------------------------------- Robot position
-
-
-def decode_position(payload: bytes) -> dict[str, Any]:
-    """Parse a `{mac}/LOG/ROBOT_POSITION` frame.
-
-    Field 1 is the longitude offset in metres, field 2 the latitude offset,
-    field 3 the orientation in radians. All three are 8-byte little-endian
-    IEEE 754 doubles. Offsets are relative to the docking station.
-    """
-    try:
-        raw = pb.decode(payload)
-    except pb.ProtobufError as err:
-        _LOGGER.warning("POSITION frame decode failed: %s", err)
-        return {}
-
-    out: dict[str, Any] = {}
-    if (lon := pb.read_double_le(raw.get(1))) is not None:
-        out["lon_offset_m"] = lon
-    if (lat := pb.read_double_le(raw.get(2))) is not None:
-        out["lat_offset_m"] = lat
-    if (orient := pb.read_double_le(raw.get(3))) is not None:
-        out["orientation_rad"] = orient
     return out
 
 
@@ -204,14 +177,8 @@ def decode_settings(payload: bytes) -> dict[str, Any]:
         out["smart_cutting_height"] = bool(raw[7])
 
     long_exit = raw.get(8) if isinstance(raw.get(8), dict) else None
-    if long_exit is not None:
-        if long_exit.get(1) is not None:
-            out["long_exit"] = bool(long_exit[1])
-        if long_exit.get(3) is not None:
-            out["long_exit_mode"] = long_exit[3]
-
-    if raw.get(9) is not None:
-        out["zone_cutting_height_uniform"] = bool(raw[9])
+    if long_exit is not None and long_exit.get(1) is not None:
+        out["long_exit"] = bool(long_exit[1])
 
     push = raw.get(14) if isinstance(raw.get(14), dict) else None
     if push is not None and push.get(1) is not None:
@@ -368,7 +335,12 @@ def pack_schedule(days: list[dict[str, Any]]) -> bytes:
 
 
 def decode_base_status(payload: bytes) -> dict[str, Any]:
-    """Parse a base-station `{base_mac}/LOG/STATUS` frame."""
+    """Parse a base-station `{base_mac}/LOG/STATUS` frame.
+
+    Top-level fields mirror matthewgream/stiga-api `decodeBaseMessageStatus`:
+    field 1 = status type, 4 = flag, 8 = location sub-msg, 9 = network
+    sub-msg (wrapped at .3 like the robot's field 20), 10 = LED setting.
+    """
     try:
         raw = pb.decode(payload)
     except pb.ProtobufError as err:
@@ -397,7 +369,72 @@ def decode_base_status(payload: bytes) -> dict[str, Any]:
         10,
         lambda v: mc.BASE_LED_MODE_INDEX_TO_NAME.get(v, v),
     )
+
+    # field 8 — location sub-message. Same shape as `decodeLocationStatus`
+    # in matthewgream's lib. Fields 3/4 are FIXED64 lat/lon offsets relative
+    # to a reference position we do not have, so they are intentionally
+    # omitted; we surface only the values that are useful standalone.
+    if isinstance(location := raw.get(8), dict):
+        _set_if_present(
+            out,
+            "gps_quality",
+            location,
+            1,
+            lambda v: mc.ROBOT_GPS_QUALITY.get(v, v),
+        )
+        _set_if_present(out, "satellites", location, 2)
+        _set_if_present(out, "rtk_quality_pct", location, 5)
+
+    # field 9 — network sub-message. Inner data lives at .3 (same wrap as
+    # the robot's field 20).
+    network = raw.get(9)
+    if isinstance(network, dict) and isinstance(network.get(3), dict):
+        sub = network[3]
+        _set_if_present(out, "network_kind", sub, 4)
+        _set_if_present(out, "network_type", sub, 5)
+        _set_if_present(out, "network_band", sub, 6)
+        # 9.3.7 = RSSI dBm (signed int32). Unlike the robot, the base
+        # reports a plausible RSSI here so we surface it.
+        _set_if_present(out, "rssi", sub, 7, _as_signed_int32)
+        _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
+        sq = _as_signed_int32(sub[11]) if 11 in sub else None
+        if sq is not None and sq != -32768:
+            out["signal_quality_pct"] = sq
+        _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
+
     return out
+
+
+def decode_base_version(payload: bytes) -> dict[str, Any]:
+    """Parse a base-station `{base_mac}/LOG/VERSION` frame.
+
+    Mirrors matthewgream's `decodeVersion`: each field is a hex string
+    whose bytes are reinterpreted as dotted version components. Empty
+    fields are omitted (proto3 default-omission).
+    """
+    try:
+        raw = pb.decode(payload)
+    except pb.ProtobufError as err:
+        _LOGGER.warning("BASE VERSION frame decode failed: %s", err)
+        return {}
+
+    out: dict[str, Any] = {}
+    if (v := _version_from_bytes(raw.get(1))) is not None:
+        out["hardware"] = v
+    if (v := _version_from_bytes(raw.get(2))) is not None:
+        out["firmware"] = v
+    if (v := _version_from_bytes(raw.get(3))) is not None:
+        out["build"] = v
+    _set_if_present(out, "modem", raw, 5)
+    _set_if_present(out, "localization", raw, 6)
+    return out
+
+
+def _version_from_bytes(value: Any) -> str | None:
+    """Render a length-delimited VERSION-frame field as dotted decimal."""
+    if isinstance(value, (bytes, bytearray)) and value:
+        return ".".join(str(b) for b in value)
+    return None
 
 
 # ---------------------------------------------------------------- Notifications

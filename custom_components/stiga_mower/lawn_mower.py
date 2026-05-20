@@ -40,6 +40,10 @@ _LOGGER = logging.getLogger(__name__)
 
 PARALLEL_UPDATES = 1
 
+# LawnMowerActivity.RETURNING was added later in HA core. Fall back to PAUSED
+# for older HA versions still pinned by `hacs.json`'s minimum constraint.
+_RETURNING = getattr(LawnMowerActivity, "RETURNING", LawnMowerActivity.PAUSED)
+
 # currentAction describes what the robot is doing RIGHT NOW and takes priority.
 # Maps each value to (LawnMowerActivity, human-readable label).
 #
@@ -55,10 +59,11 @@ _CURRENT_ACTION: dict[str, tuple[LawnMowerActivity, str]] = {
     "PLANNING_ONGOING": (LawnMowerActivity.MOWING, "Planning"),
     "REACHING_FIRST_POINT": (LawnMowerActivity.MOWING, "Heading to start point"),
     "NAVIGATING_TO_AREA": (LawnMowerActivity.MOWING, "Navigating to zone"),
-    # Returning to dock — HA has no RETURNING activity; PAUSED is closest.
-    "GOING_HOME": (LawnMowerActivity.PAUSED, "Returning to dock"),
-    "BACK_HOME": (LawnMowerActivity.PAUSED, "Returning to dock"),
-    "BACK_HOME_MANUAL": (LawnMowerActivity.PAUSED, "Returning to dock"),
+    # Returning to dock — uses LawnMowerActivity.RETURNING when present, falls
+    # back to PAUSED on older HA versions (see `_RETURNING` above).
+    "GOING_HOME": (_RETURNING, "Returning to dock"),
+    "BACK_HOME": (_RETURNING, "Returning to dock"),
+    "BACK_HOME_MANUAL": (_RETURNING, "Returning to dock"),
     # Docked
     "AT_HOME": (LawnMowerActivity.DOCKED, "At home"),
     "CHARGING": (LawnMowerActivity.DOCKED, "Charging"),
@@ -91,7 +96,7 @@ MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
     "WORKING": LawnMowerActivity.MOWING,
     "BORDER": LawnMowerActivity.MOWING,
     "MANUAL": LawnMowerActivity.MOWING,
-    "GOING_HOME": LawnMowerActivity.PAUSED,  # no RETURNING in HA, closest matching state
+    "GOING_HOME": _RETURNING,
     "PAUSE": LawnMowerActivity.PAUSED,
     "CHARGING": LawnMowerActivity.DOCKED,
     "SLEEPING": LawnMowerActivity.DOCKED,

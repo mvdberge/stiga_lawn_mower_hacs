@@ -49,11 +49,6 @@ def test_cutting_height_map_round_trip() -> None:
     assert sorted(mc.CUTTING_HEIGHTS_MM) == [20, 25, 30, 35, 40, 45, 50, 55, 60]
 
 
-def test_cutting_modes_match_app_naming() -> None:
-    # These four labels match what the STIGA.GO app uses (snake_case for HA compatibility).
-    assert set(mc.CUTTING_MODES) == {"dense_grid", "chess_board", "north_south", "east_west"}
-
-
 def test_rain_delays_map_round_trip() -> None:
     for hours, idx in mc.RAIN_DELAYS_HOURS.items():
         assert mc.RAIN_DELAY_INDEX_TO_HOURS[idx] == hours

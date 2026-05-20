@@ -78,10 +78,10 @@ class StigaMQTT:
 
         # Handlers
         self._on_status: StatusCallback | None = None
-        self._on_position: StatusCallback | None = None
         self._on_settings: StatusCallback | None = None
         self._on_schedule: StatusCallback | None = None
         self._on_base_status: StatusCallback | None = None
+        self._on_base_version: StatusCallback | None = None
         self._on_notification: StatusCallback | None = None
         self._on_command_ack: StatusCallback | None = None
         self._on_connection_change: ConnectionCallback | None = None
@@ -104,24 +104,24 @@ class StigaMQTT:
         self,
         *,
         on_status: StatusCallback | None = None,
-        on_position: StatusCallback | None = None,
         on_settings: StatusCallback | None = None,
         on_schedule: StatusCallback | None = None,
         on_base_status: StatusCallback | None = None,
+        on_base_version: StatusCallback | None = None,
         on_notification: StatusCallback | None = None,
         on_command_ack: StatusCallback | None = None,
         on_connection_change: ConnectionCallback | None = None,
     ) -> None:
         if on_status is not None:
             self._on_status = on_status
-        if on_position is not None:
-            self._on_position = on_position
         if on_settings is not None:
             self._on_settings = on_settings
         if on_schedule is not None:
             self._on_schedule = on_schedule
         if on_base_status is not None:
             self._on_base_status = on_base_status
+        if on_base_version is not None:
+            self._on_base_version = on_base_version
         if on_notification is not None:
             self._on_notification = on_notification
         if on_command_ack is not None:
@@ -342,13 +342,7 @@ class StigaMQTT:
 
     def _dispatch_robot_log(self, mac: str, kind: str, payload: bytes) -> None:
         if kind == mc.ROBOT_LOG_STATUS:
-            if not self._robots.get(mac):
-                _LOGGER.warning(
-                    "STATUS frame for unregistered robot MAC %s — check _build_mqtt()", mac
-                )
             self._fire(self._on_status, mac, mm.decode_status(payload))
-        elif kind == mc.ROBOT_LOG_POSITION:
-            self._fire(self._on_position, mac, mm.decode_position(payload))
         elif kind == mc.ROBOT_LOG_SETTINGS:
             self._fire(self._on_settings, mac, mm.decode_settings(payload))
         elif kind == mc.ROBOT_LOG_SCHEDULING:
@@ -362,7 +356,7 @@ class StigaMQTT:
         if kind == mc.BASE_LOG_STATUS:
             self._fire(self._on_base_status, mac, mm.decode_base_status(payload))
         elif kind == mc.BASE_LOG_VERSION:
-            _LOGGER.debug("Base %s VERSION frame ignored", mac)
+            self._fire(self._on_base_version, mac, mm.decode_base_version(payload))
         else:
             _LOGGER.debug("Base %s sent unknown LOG kind: %s", mac, kind)
 

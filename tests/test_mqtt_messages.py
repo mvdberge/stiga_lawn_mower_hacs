@@ -2,14 +2,12 @@
 
 These exercise the pure decoder functions: bytes-in → dict-out. We build
 the protobuf inputs through ``protobuf_codec.encode`` (already covered by
-``test_protobuf_codec.py``) plus a small ``_fixed64`` helper for the GPS
-fields, since the codec only encodes FIXED32 floats out of the box.
+``test_protobuf_codec.py``).
 """
 
 from __future__ import annotations
 
 import json
-import struct
 
 import pytest
 
@@ -26,11 +24,6 @@ def _varint_bytes(value: int) -> bytes:
         value >>= 7
     out.append(value & 0x7F)
     return bytes(out)
-
-
-def _fixed64(field: int, value: float) -> bytes:
-    """Encode a single FIXED64 field as a protobuf wire-format fragment."""
-    return _varint_bytes((field << 3) | 1) + struct.pack("<d", value)
 
 
 def _wrap_len(field: int, payload: bytes) -> bytes:
@@ -93,9 +86,6 @@ def test_decode_status_full_frame() -> None:
     assert out["signal_quality_pct"] == 70
     assert out["rsrp"] == -90
     assert out["rsrq"] == -10
-    # lat_offset_cm / lon_offset_cm come from ROBOT_POSITION topic, not STATUS
-    assert "lat_offset_cm" not in out
-    assert "lon_offset_cm" not in out
 
 
 def test_decode_status_minimal_frame() -> None:
@@ -168,28 +158,6 @@ def test_decode_status_malformed_does_not_raise() -> None:
     assert mm.decode_status(b"\x80") == {}
 
 
-# ---------------------------------------------------------------- decode_position
-
-
-def test_decode_position_full_frame() -> None:
-    payload = _fixed64(1, 12.34) + _fixed64(2, -56.78) + _fixed64(3, 1.5708)
-    out = mm.decode_position(payload)
-    assert out["lon_offset_m"] == pytest.approx(12.34)
-    assert out["lat_offset_m"] == pytest.approx(-56.78)
-    assert out["orientation_rad"] == pytest.approx(1.5708)
-
-
-def test_decode_position_missing_fields() -> None:
-    # only longitude
-    payload = _fixed64(1, 1.0)
-    out = mm.decode_position(payload)
-    assert out == {"lon_offset_m": 1.0}
-
-
-def test_decode_position_empty_payload() -> None:
-    assert mm.decode_position(b"") == {}
-
-
 # ---------------------------------------------------------------- decode_settings
 
 
@@ -201,8 +169,8 @@ def test_decode_settings_full_frame() -> None:
             4: {1: 1, 2: 5},  # zone height enabled, 45 mm
             6: 1,  # anti-theft on
             7: 0,  # smart cut height off
-            8: {1: 1, 3: 2},  # long exit on, mode 2
-            9: 1,  # uniform height
+            8: {1: 1, 3: 2},  # long exit on, mode field 3 (decoded-only, ignored)
+            9: 1,  # uniform height (decoded-only, ignored)
             14: {1: 1},  # push notifications on
             15: {1: 0},  # obstacle notifications off
         }
@@ -217,8 +185,6 @@ def test_decode_settings_full_frame() -> None:
         "anti_theft": True,
         "smart_cutting_height": False,
         "long_exit": True,
-        "long_exit_mode": 2,
-        "zone_cutting_height_uniform": True,
         "push_notifications": True,
         "obstacle_notifications": False,
     }
@@ -439,6 +405,64 @@ def test_decode_base_status_unknown_codes_pass_through() -> None:
     assert out == {"status_type": 99, "status_flag": 99, "led_mode": 99}
 
 
+def test_decode_base_status_with_location_and_network() -> None:
+    """field 8 = location, field 9.3 = network (same wrap as robot 20.3)."""
+    payload = pb.encode(
+        {
+            1: 5,  # PUBLISHING_CORRECTIONS
+            4: 1,  # ACTIVE_OK
+            8: {1: 0, 2: 14, 5: 95},  # coverage GOOD, 14 sats, RTK 95%
+            9: {3: {4: 26201, 5: "LTE", 6: 20, 7: -73, 10: -94, 11: 72, 12: -10}},
+            10: 2,  # scheduled LED
+        }
+    )
+    out = mm.decode_base_status(payload)
+    assert out["status_type"] == "PUBLISHING_CORRECTIONS"
+    assert out["status_flag"] == "ACTIVE_OK"
+    assert out["led_mode"] == "scheduled"
+    assert out["gps_quality"] == "GOOD"
+    assert out["satellites"] == 14
+    assert out["rtk_quality_pct"] == 95
+    assert out["network_kind"] == 26201
+    assert out["network_type"] == "LTE"
+    assert out["network_band"] == 20
+    assert out["rssi"] == -73
+    assert out["rsrp"] == -94
+    assert out["signal_quality_pct"] == 72
+    assert out["rsrq"] == -10
+
+
+def test_decode_base_status_signal_quality_sentinel_dropped() -> None:
+    payload = pb.encode({9: {3: {10: -90, 11: -32768, 12: -8}}})
+    out = mm.decode_base_status(payload)
+    assert out["rsrp"] == -90
+    assert out["rsrq"] == -8
+    assert "signal_quality_pct" not in out
+
+
+def test_decode_base_status_empty_payload() -> None:
+    assert mm.decode_base_status(b"") == {}
+
+
+# ---------------------------------------------------------------- decode_base_version
+
+
+def test_decode_base_version_full_frame() -> None:
+    payload = pb.encode({1: b"\x00\x00\x05", 2: b"\x01\x02\x03", 3: b"\x10", 5: "LTE-M", 6: "EU"})
+    out = mm.decode_base_version(payload)
+    assert out == {
+        "hardware": "0.0.5",
+        "firmware": "1.2.3",
+        "build": "16",
+        "modem": "LTE-M",
+        "localization": "EU",
+    }
+
+
+def test_decode_base_version_empty_payload() -> None:
+    assert mm.decode_base_version(b"") == {}
+
+
 # ---------------------------------------------------------------- decode_notification
 
 
@@ -547,3 +571,64 @@ def test_encode_reset_error_matches_app_capture() -> None:
     # "Reset error" (capture_app_trace.jsonl). Robot ACKed with result=1.
     encoded = mm.encode_simple_request(mc.ROBOT_CMD_RESET_ERROR)
     assert encoded.hex() == "08251825"
+
+
+# ---------------------------------------------------------------- encode_settings_update (single-key)
+
+
+def test_encode_settings_update_rain_sensor_enabled() -> None:
+    payload = mm.encode_settings_update({"rain_sensor_enabled": True})
+    decoded = pb.decode(payload)
+    # Field 1 = cmd_id (18), field 2 = params, field 3 = echo
+    assert decoded[1] == 18
+    params = decoded[2]
+    assert isinstance(params, dict)
+    assert params[1][1] == 1  # rain.enabled = True
+
+
+def test_encode_settings_update_cutting_height_40mm() -> None:
+    payload = mm.encode_settings_update({"cutting_height_mm": 40})
+    decoded = pb.decode(payload)
+    params = decoded[2]
+    # 40mm -> index 4
+    assert params[4][2] == 4
+
+
+def test_encode_settings_update_anti_theft() -> None:
+    payload = mm.encode_settings_update({"anti_theft": False})
+    decoded = pb.decode(payload)
+    params = decoded[2]
+    assert params[6] == 0
+
+
+def test_encode_settings_update_rain_delay_8h() -> None:
+    payload = mm.encode_settings_update({"rain_sensor_delay_h": 8})
+    decoded = pb.decode(payload)
+    params = decoded[2]
+    # 8h -> index 1
+    assert params[1][2] == 1
+
+
+def test_encode_settings_update_unknown_cutting_height_skipped() -> None:
+    # 37mm is not a valid height — should not include cutting field
+    payload = mm.encode_settings_update({"cutting_height_mm": 37})
+    decoded = pb.decode(payload)
+    params = decoded.get(2)
+    # params may be None or not contain field 4
+    if params is not None:
+        assert 4 not in params
+
+
+def test_encode_settings_update_multiple_fields() -> None:
+    payload = mm.encode_settings_update(
+        {
+            "rain_sensor_enabled": True,
+            "keyboard_lock": False,
+            "cutting_height_mm": 30,
+        }
+    )
+    decoded = pb.decode(payload)
+    params = decoded[2]
+    assert params[1][1] == 1  # rain on
+    assert params[2] == 0  # keyboard_lock off
+    assert params[4][2] == 2  # 30mm -> index 2

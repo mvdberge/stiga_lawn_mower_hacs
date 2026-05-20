@@ -51,7 +51,6 @@ ROBOT_LOG_STATUS = "STATUS"
 ROBOT_LOG_VERSION = "VERSION"
 ROBOT_LOG_SETTINGS = "SETTINGS"
 ROBOT_LOG_SCHEDULING = "SCHEDULING_SETTINGS"
-ROBOT_LOG_POSITION = "ROBOT_POSITION"
 
 # ---------------------------------------------------------------- Robot commands
 
@@ -183,15 +182,6 @@ CUTTING_HEIGHT_INDEX_TO_MM: dict[int, int] = {v: k for k, v in CUTTING_HEIGHTS_M
 # Rain delay (hours -> wire index).
 RAIN_DELAYS_HOURS: dict[int, int] = {4: 0, 8: 1, 12: 2}
 RAIN_DELAY_INDEX_TO_HOURS: dict[int, int] = {v: k for k, v in RAIN_DELAYS_HOURS.items()}
-
-# Cutting modes (name -> wire index).
-CUTTING_MODES: dict[str, int] = {
-    "dense_grid": 0,
-    "chess_board": 1,
-    "north_south": 5,
-    "east_west": 6,
-}
-CUTTING_MODE_INDEX_TO_NAME: dict[int, str] = {v: k for k, v in CUTTING_MODES.items()}
 
 # ---------------------------------------------------------------- Schedule
 #

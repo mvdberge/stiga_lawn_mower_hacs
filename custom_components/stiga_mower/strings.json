@@ -57,11 +57,14 @@
   },
   "entity": {
     "sensor": {
-      "battery_cycles":      { "name": "Charge Cycles" },
-      "battery_health":      { "name": "Battery Health" },
       "battery_capacity":    { "name": "Battery Capacity" },
-      "battery_remaining":   { "name": "Remaining Capacity" },
-      "cutting_height":      { "name": "Cutting Height" },
+      "battery_current":     { "name": "Battery Current" },
+      "battery_cycles":      { "name": "Battery Cycles" },
+      "battery_health":      { "name": "Battery Health" },
+      "battery_power":       { "name": "Battery Power" },
+      "battery_remaining":   { "name": "Battery Remaining" },
+      "battery_time_left":   { "name": "Battery Time Left" },
+      "battery_voltage":     { "name": "Battery Voltage" },
       "dock_firmware":       { "name": "Dock Firmware" },
       "garden_area":         { "name": "Garden Area" },
       "zone_count":          { "name": "Zones" },
@@ -69,8 +72,8 @@
       "obstacle_count":      { "name": "Obstacles" },
       "obstacle_area":       { "name": "Obstacle Area" },
       "current_zone":        { "name": "Current Zone" },
-      "zone_completed_pct":  { "name": "Zone Progress" },
-      "garden_completed_pct":{ "name": "Garden Progress" },
+      "zone_completed_pct":  { "name": "Progress Zone" },
+      "garden_completed_pct":{ "name": "Progress Garden" },
       "satellites":          { "name": "GPS Satellites" },
       "rtk_quality_pct":     { "name": "RTK Quality" },
       "gps_quality":         { "name": "GPS Quality" },
@@ -89,9 +92,6 @@
       "battery_charging":{ "name": "Charging" },
       "error_active":    { "name": "Error" }
     },
-    "device_tracker": {
-      "position": { "name": "Position" }
-    },
     "number": {
       "cutting_height": { "name": "Cutting Height" }
     },
@@ -105,15 +105,6 @@
       "long_exit":              { "name": "Long Exit" }
     },
     "select": {
-      "cutting_mode": {
-        "name": "Cutting Mode",
-        "state": {
-          "dense_grid":  "Dense Grid",
-          "chess_board": "Chess Board",
-          "north_south": "North-South",
-          "east_west":   "East-West"
-        }
-      },
       "rain_sensor_delay": {
         "name": "Rain Delay",
         "state": {
@@ -132,7 +123,6 @@
     },
     "button": {
       "calibrate_blades": { "name": "Calibrate Blades" },
-      "refresh_status":   { "name": "Refresh Status" },
       "reset_error":      { "name": "Reset Error" }
     },
     "calendar": {

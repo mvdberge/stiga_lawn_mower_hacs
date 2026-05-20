@@ -219,10 +219,10 @@ def test_attach_mqtt_registers_all_handlers(coordinator: StigaDataUpdateCoordina
     kwargs = mqtt.set_handlers.call_args.kwargs
     expected = {
         "on_status",
-        "on_position",
         "on_settings",
         "on_schedule",
         "on_base_status",
+        "on_base_version",
         "on_connection_change",
     }
     assert set(kwargs) == expected
@@ -266,16 +266,6 @@ def test_status_push_partial_frame_keeps_battery_remaining(
     assert merged["battery_level"] == 83
     assert merged["rsrp"] == -94
     assert merged["current_zone"] == 2
-
-
-def test_position_push_lands_in_live_position(
-    coordinator: StigaDataUpdateCoordinator,
-) -> None:
-    coordinator._on_mqtt_position("MAC1", {"lat_offset_m": 1.0, "lon_offset_m": 2.0})
-    assert coordinator.data["live_position"]["MAC1"] == {
-        "lat_offset_m": 1.0,
-        "lon_offset_m": 2.0,
-    }
 
 
 def test_settings_push_lands_in_live_settings(
@@ -534,6 +524,7 @@ def rest_coordinator(hass) -> StigaDataUpdateCoordinator:
     api.get_device_status = AsyncMock(return_value={"has_data": True, "battery_level": 50})
     api.get_device_extended = AsyncMock(return_value={})
     api.get_perimeter = AsyncMock(return_value={})
+    api.get_bases = AsyncMock(return_value=[])
     entry = MagicMock(data={"email": "e", "password": "p"})
     return StigaDataUpdateCoordinator(hass, entry, api)
 
@@ -611,6 +602,7 @@ async def test_partial_status_failure_still_counts_as_success(
     )
     api.get_device_extended = AsyncMock(return_value={})
     api.get_perimeter = AsyncMock(return_value={})
+    api.get_bases = AsyncMock(return_value=[])
     entry = MagicMock(data={"email": "e", "password": "p"})
     c = StigaDataUpdateCoordinator(hass, entry, api)
 

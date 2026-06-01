@@ -11,12 +11,13 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .api import StigaAPI, StigaApiError, StigaAuthError
-from .const import DOMAIN, UPDATE_INTERVAL
+from .const import DOMAIN, UPDATE_INTERVAL, split_firmware_version
 from .mqtt_client import StigaMQTT
 
 _LOGGER = logging.getLogger(__name__)
@@ -94,6 +95,13 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         # Timestamp of the last successful REST poll. Used to decide whether
         # cached data is still recent enough to keep entities available.
         self._last_rest_success: datetime | None = None
+
+        # Last `firmware_version` string we observed per device UUID. HA's
+        # device registry only consumes `device_info` at entity-registration
+        # time, so a firmware update done via STIGA.GO would otherwise stay
+        # invisible until the integration is reloaded. We track the raw
+        # string and push changes through `_sync_device_registry_firmware`.
+        self._known_firmware: dict[str, str] = {}
 
         super().__init__(
             hass,
@@ -309,6 +317,42 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             if entry:
                 self._meta[uuid] = entry
 
+    def _sync_device_registry_firmware(self) -> None:
+        """Push firmware_version changes from REST into the device registry.
+
+        HA reads each entity's `device_info` exactly once (at registration);
+        the `sw_version`/`hw_version` derived from `attributes.firmware_version`
+        therefore never gets refreshed when the user flashes a new firmware
+        via STIGA.GO. The REST poll already carries the new string in every
+        `get_devices()` response — we just need to forward it to the device
+        registry whenever it actually changes.
+        """
+        device_reg = dr.async_get(self.hass)
+        for device in self._devices:
+            uuid = _device_uuid(device)
+            if not uuid:
+                continue
+            raw = (device.get("attributes") or {}).get("firmware_version")
+            if not raw:
+                continue
+            if self._known_firmware.get(uuid) == raw:
+                continue
+            self._known_firmware[uuid] = raw
+            entry = device_reg.async_get_device(identifiers={(DOMAIN, uuid)})
+            # No registry entry yet means entities haven't been added yet —
+            # their initial `device_info` will populate sw_version on first
+            # registration, so there is nothing to update here.
+            if entry is None:
+                continue
+            hw, fw, _build = split_firmware_version(raw)
+            kwargs: dict[str, Any] = {}
+            if fw:
+                kwargs["sw_version"] = fw
+            if hw and hw != fw:
+                kwargs["hw_version"] = hw
+            if kwargs:
+                device_reg.async_update_device(entry.id, **kwargs)
+
     async def _refresh_bases(self) -> None:
         """Best-effort refresh of the base-station list from /api/garage.
 
@@ -347,6 +391,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                 else:
                     if devices:
                         self._devices = devices
+                        self._sync_device_registry_firmware()
 
                 statuses: dict[str, dict] = {}
                 previous = (self.data or {}).get("statuses", {})

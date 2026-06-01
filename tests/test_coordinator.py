@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from homeassistant.helpers import device_registry as dr
 
 from custom_components.stiga_mower.api import StigaApiError
 from custom_components.stiga_mower.coordinator import (
@@ -611,3 +612,159 @@ async def test_partial_status_failure_still_counts_as_success(
     assert c._last_rest_success is not None
     assert c._consecutive_failures == 0
     assert c.rest_data_fresh is True
+
+
+# ---------------------------------------------------------------- Firmware registry sync
+
+
+async def test_firmware_change_propagates_to_device_registry(hass) -> None:
+    """A new `firmware_version` from /garage must update the device registry.
+
+    HA reads `device_info` only at entity registration, so without an explicit
+    `async_update_device` call a firmware flashed via STIGA.GO would only show
+    up after an integration reload. This test simulates the post-flash poll
+    and asserts the registry sees the new `sw_version`/`hw_version`.
+    """
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.stiga_mower.const import DOMAIN
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data={"email": "e", "password": "p"})
+    config_entry.add_to_hass(hass)
+
+    # 12-segment string split as (hardware, firmware, build) by
+    # `split_firmware_version`. The middle 4 segments are surfaced as
+    # `sw_version`; vary them so the registry update is observable.
+    initial_fw_raw = "1.0.0.0.2.0.0.0.0.0.0.0"  # hw=1.0.0.0 fw=2.0.0.0
+    new_fw_raw = "1.0.0.0.3.0.0.0.0.0.0.0"  # hw=1.0.0.0 fw=3.0.0.0
+
+    device_reg = dr.async_get(hass)
+    device_reg.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, "u1")},
+        manufacturer="STIGA",
+        sw_version="2.0.0.0",
+        hw_version="1.0.0.0",
+    )
+
+    api = MagicMock()
+    api.get_devices = AsyncMock(
+        return_value=[
+            {
+                "attributes": {
+                    "uuid": "u1",
+                    "name": "Bumblebee",
+                    "mac_address": "MAC1",
+                    "firmware_version": new_fw_raw,
+                }
+            },
+        ]
+    )
+    api.get_device_status = AsyncMock(return_value={"has_data": True, "battery_level": 50})
+    api.get_device_extended = AsyncMock(return_value={})
+    api.get_perimeter = AsyncMock(return_value={})
+    api.get_bases = AsyncMock(return_value=[])
+    # Seed the coordinator's known-firmware cache with the *old* string so the
+    # poll really sees a change. (Without this the first poll would still
+    # update the registry — but we want to exercise the change-detection path
+    # the way a long-running integration would experience it.)
+    c = StigaDataUpdateCoordinator(hass, config_entry, api)
+    c._known_firmware["u1"] = initial_fw_raw
+
+    await c.async_refresh()
+
+    updated = device_reg.async_get_device(identifiers={(DOMAIN, "u1")})
+    assert updated is not None
+    assert updated.sw_version == "3.0.0.0"
+    # hw segment is unchanged in this firmware bump; registry must still
+    # reflect the hardware version derived from the same string.
+    assert updated.hw_version == "1.0.0.0"
+    assert c._known_firmware["u1"] == new_fw_raw
+
+
+async def test_firmware_unchanged_does_not_touch_registry(hass) -> None:
+    """Idempotent: repeated polls with the same firmware string don't rewrite the registry."""
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.stiga_mower.const import DOMAIN
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data={"email": "e", "password": "p"})
+    config_entry.add_to_hass(hass)
+
+    fw_raw = "1.0.0.0.2.0.0.0.0.0.0.0"
+
+    device_reg = dr.async_get(hass)
+    device_reg.async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        identifiers={(DOMAIN, "u1")},
+        manufacturer="STIGA",
+        sw_version="2.0.0.0",
+        hw_version="1.0.0.0",
+    )
+
+    api = MagicMock()
+    api.get_devices = AsyncMock(
+        return_value=[
+            {
+                "attributes": {
+                    "uuid": "u1",
+                    "mac_address": "MAC1",
+                    "firmware_version": fw_raw,
+                }
+            },
+        ]
+    )
+    api.get_device_status = AsyncMock(return_value={"has_data": True})
+    api.get_device_extended = AsyncMock(return_value={})
+    api.get_perimeter = AsyncMock(return_value={})
+    api.get_bases = AsyncMock(return_value=[])
+
+    c = StigaDataUpdateCoordinator(hass, config_entry, api)
+    c._known_firmware["u1"] = fw_raw  # already in sync
+
+    with patch.object(device_reg, "async_update_device") as mock_update:
+        await c.async_refresh()
+        await c.async_refresh()
+        mock_update.assert_not_called()
+
+
+async def test_firmware_sync_skips_when_no_registry_entry_yet(hass) -> None:
+    """Before any entity is registered, the helper must be a no-op.
+
+    On the very first poll (during `async_config_entry_first_refresh`) no
+    platform has been set up yet, so the device registry has no entry for
+    the robot. The helper must skip silently instead of raising; entity
+    registration that follows will populate sw_version from device_info.
+    """
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.stiga_mower.const import DOMAIN
+
+    config_entry = MockConfigEntry(domain=DOMAIN, data={"email": "e", "password": "p"})
+    config_entry.add_to_hass(hass)
+
+    api = MagicMock()
+    api.get_devices = AsyncMock(
+        return_value=[
+            {
+                "attributes": {
+                    "uuid": "u_no_entity",
+                    "mac_address": "MAC1",
+                    "firmware_version": "1.0.0.0.3.0.0.0.0.0.0.0",
+                }
+            },
+        ]
+    )
+    api.get_device_status = AsyncMock(return_value={"has_data": True})
+    api.get_device_extended = AsyncMock(return_value={})
+    api.get_perimeter = AsyncMock(return_value={})
+    api.get_bases = AsyncMock(return_value=[])
+
+    c = StigaDataUpdateCoordinator(hass, config_entry, api)
+    await c.async_refresh()
+
+    # Cache is still primed so a later change is detected, but no registry
+    # entry got created behind the back of the entity layer.
+    assert c._known_firmware["u_no_entity"] == "1.0.0.0.3.0.0.0.0.0.0.0"
+    device_reg = dr.async_get(hass)
+    assert device_reg.async_get_device(identifiers={(DOMAIN, "u_no_entity")}) is None

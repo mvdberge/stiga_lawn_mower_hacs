@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.5.1] - 2026-06-01
+
+### Fixed
+
+- Firmware version shown in Home Assistant now updates after a mower firmware upgrade. Previously the `sw_version` in the device registry was frozen at the value seen during integration setup, so flashing a new firmware via STIGA.GO only became visible after a manual integration reload. Each REST poll now checks for a changed `firmware_version` and pushes it to the device registry on the fly.
+
 ## [2.5.0] - 2026-05-20
 
 ### Removed

@@ -7,7 +7,9 @@ rules:
   brands: done
   common-modules: done
   config-flow: done
-  config-flow-test-coverage: done
+  config-flow-test-coverage:
+    status: todo
+    comment: config_flow.py is at 97% (reconfigure error branch uncovered); needs 100%.
   dependency-transparency: done
   docs-actions:
     status: exempt
@@ -35,7 +37,9 @@ rules:
   log-when-unavailable: done
   parallel-updates: done
   reauthentication-flow: done
-  test-coverage: done
+  test-coverage:
+    status: todo
+    comment: Overall coverage is ~75%; the 95% bar is not yet met (weakest: sensor, api, lawn_mower).
 
   # Gold
   devices: done

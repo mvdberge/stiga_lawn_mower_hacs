@@ -472,6 +472,35 @@ def test_connection_change_propagates_to_data(
     assert coordinator.data["mqtt_connected"] is False
 
 
+def test_build_data_meta_snapshot_isolated_from_later_mutation(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    # Background refreshers (_refresh_meta) mutate self._meta in place. The
+    # snapshot handed to consumers must be a copy so it does not change
+    # underneath them when self._meta is subsequently mutated.
+    coordinator._meta = {"u1": {"model_name": "A 15v"}}
+    snapshot = coordinator._build_data(rest_statuses={"u1": {}})
+    assert snapshot["meta"] == {"u1": {"model_name": "A 15v"}}
+
+    coordinator._meta["u2"] = {"model_name": "A 30"}
+    coordinator._meta["u1"] = {"model_name": "changed"}
+
+    # Snapshot's top-level meta dict is unaffected by the in-place mutation.
+    assert snapshot["meta"] == {"u1": {"model_name": "A 15v"}}
+
+
+def test_build_data_devices_snapshot_isolated_from_later_mutation(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    snapshot = coordinator._build_data(rest_statuses={"u1": {}})
+    assert len(snapshot["devices"]) == 1
+
+    coordinator._devices.append({"attributes": {"uuid": "u2", "mac_address": "MAC2"}})
+
+    # Appending to self._devices must not grow the already-returned snapshot.
+    assert len(snapshot["devices"]) == 1
+
+
 def test_publish_update_no_op_before_first_refresh(hass) -> None:
     """Push handlers are silent until the first REST poll completes."""
     api = MagicMock()

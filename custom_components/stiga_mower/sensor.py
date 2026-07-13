@@ -350,9 +350,11 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         if status.get("has_data") is False and not self.coordinator.has_data_fresh(self._uuid):
             return False
         if self.entity_description.key in _MQTT_ONLY_SENSOR_KEYS:
-            # MQTT-only fields: available whenever the field was received, regardless
-            # of REST freshness — MQTT can still deliver live data while REST is slow.
-            return self.entity_description.status_key in status
+            # MQTT-only fields go stale the instant MQTT drops: the mower stops
+            # pushing and _live_status is never cleared, so key presence alone
+            # would keep a frozen value "available" forever. Require a live MQTT
+            # connection in addition to having received the field at least once.
+            return bool(data.get("mqtt_connected")) and self.entity_description.status_key in status
         # Stay available as long as either source is delivering: REST cache is
         # recent, or MQTT is pushing live frames (which also refresh battery_level,
         # battery_voltage, etc. via _merge_live_into_status).

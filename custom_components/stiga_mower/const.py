@@ -8,6 +8,15 @@ CONF_PASSWORD = "password"
 UPDATE_INTERVAL = 30  # seconds
 REQUEST_TIMEOUT = 10  # seconds per HTTP request
 
+# Transient-error handling for REST requests. The STIGA cloud occasionally
+# drops connections mid-request (ServerDisconnectedError / ClientOSError) or
+# answers with a 5xx during instability. A small in-cycle retry rides over
+# these blips so a single poll doesn't flap every entity to "unavailable".
+# Timeouts are deliberately NOT retried — they already consumed REQUEST_TIMEOUT
+# seconds and retrying could blow the coordinator's per-cycle budget.
+REQUEST_RETRIES = 2  # extra attempts after the first (total = 3 tries)
+RETRY_BACKOFF = 0.5  # seconds; grows linearly per attempt (0.5s, 1.0s)
+
 # Firebase Auth (publicly embedded in STIGA app code)
 FIREBASE_API_KEY = "AIzaSyCPtRBU_hwWZYsguHp9ucGrfNac0kXR6ug"
 FIREBASE_AUTH_URL = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword"

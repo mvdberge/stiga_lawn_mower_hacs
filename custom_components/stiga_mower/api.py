@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import time
+from typing import Any
 
 import aiohttp
 
@@ -17,7 +20,9 @@ from .const import (
     EP_STOP,
     FIREBASE_API_KEY,
     FIREBASE_AUTH_URL,
+    REQUEST_RETRIES,
     REQUEST_TIMEOUT,
+    RETRY_BACKOFF,
     STIGA_BASE_URL,
 )
 
@@ -45,73 +50,111 @@ class StigaAPI:
         self._password = password
         self._session = session
         self._token: str | None = None
+        # Monotonic deadline after which the cached token is considered stale.
+        self._token_expiry: float = 0.0
+        # Serialises logins so concurrent callers can't interleave/double-login.
+        self._auth_lock = asyncio.Lock()
 
     # ------------------------------------------------------------------ Auth
 
     async def authenticate(self) -> None:
-        """Firebase login – stores idToken internally."""
-        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        try:
-            async with self._session.post(
-                FIREBASE_AUTH_URL,
-                json={
-                    "email": self._email,
-                    "password": self._password,
-                    "returnSecureToken": True,
-                },
-                params={"key": FIREBASE_API_KEY},
-                timeout=timeout,
-            ) as resp:
-                data = await resp.json()
-                if resp.status != 200:
-                    msg = data.get("error", {}).get("message", str(resp.status))
-                    raise StigaAuthError(f"Authentication failed: {msg}")
-                self._token = data["idToken"]
-                _LOGGER.debug("Firebase authentication successful.")
-        except aiohttp.ClientError as err:
-            raise StigaApiError(f"Network error during authentication: {err}") from err
-        except TimeoutError as err:
-            raise StigaApiError(f"Timeout during authentication (>{REQUEST_TIMEOUT}s)") from err
+        """Firebase login – stores idToken internally.
+
+        Serialised by an asyncio lock so concurrent callers (the MQTT token
+        provider plus a 401 retry, or several parallel REST calls) cannot
+        interleave and corrupt ``self._token`` or fire redundant logins.
+        """
+        async with self._auth_lock:
+            timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+            try:
+                async with self._session.post(
+                    FIREBASE_AUTH_URL,
+                    json={
+                        "email": self._email,
+                        "password": self._password,
+                        "returnSecureToken": True,
+                    },
+                    params={"key": FIREBASE_API_KEY},
+                    timeout=timeout,
+                ) as resp:
+                    data = await resp.json()
+                    if resp.status != 200:
+                        msg = data.get("error", {}).get("message", str(resp.status))
+                        raise StigaAuthError(f"Authentication failed: {msg}")
+                    self._token = data["idToken"]
+                    # Firebase id-tokens are valid ~1 h; refresh a minute early
+                    # so we never use a token that expires mid-request.
+                    try:
+                        expires_in = float(data.get("expiresIn", 3600))
+                    except (TypeError, ValueError):
+                        expires_in = 3600.0
+                    self._token_expiry = time.monotonic() + max(expires_in - 60.0, 60.0)
+                    _LOGGER.debug("Firebase authentication successful.")
+            except aiohttp.ClientError as err:
+                raise StigaApiError(f"Network error during authentication: {err}") from err
+            except TimeoutError as err:
+                raise StigaApiError(f"Timeout during authentication (>{REQUEST_TIMEOUT}s)") from err
 
     async def get_token(self) -> str:
-        """Return a fresh Firebase id-token, re-authenticating each call.
+        """Return a valid Firebase id-token, re-authenticating only when needed.
 
-        The MQTT client uses this as its credential provider and calls it
-        roughly every 50 minutes (well within the 60-minute Firebase
-        validity window). Going through `authenticate()` on every call is
-        cheap relative to the cycle and avoids tracking expiry ourselves.
+        The MQTT client uses this as its credential provider and calls it on
+        every reconnect (~every 50 minutes). We cache the token until shortly
+        before its expiry so routine reconnects don't trigger a redundant
+        Firebase login (which risks ``TOO_MANY_ATTEMPTS`` rate-limiting).
         """
+        if self._token and time.monotonic() < self._token_expiry:
+            return self._token
         await self.authenticate()
         if not self._token:
             raise StigaAuthError("authenticate() returned without a token")
         return self._token
 
-    def _auth_header(self) -> dict:
+    def _auth_header(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self._token}"}
 
-    async def _get(self, path: str, retry: bool = True):
+    async def _get(self, path: str, retry: bool = True) -> Any:
         if not self._token:
             await self.authenticate()
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        try:
-            async with self._session.get(
-                f"{STIGA_BASE_URL}{path}",
-                headers=self._auth_header(),
-                timeout=timeout,
-            ) as resp:
-                if resp.status == 401 and retry:
-                    _LOGGER.debug("Token expired – re-authenticating.")
-                    await self.authenticate()
-                    return await self._get(path, retry=False)
-                if resp.status != 200:
-                    raise StigaApiError(f"GET {path} → HTTP {resp.status}")
-                return await resp.json()
-        except aiohttp.ClientError as err:
-            raise StigaApiError(f"Network error: {err}") from err
-        except TimeoutError as err:
-            raise StigaApiError(f"Timeout on GET {path} (>{REQUEST_TIMEOUT}s)") from err
+        last_err: StigaApiError | None = None
+        for attempt in range(REQUEST_RETRIES + 1):
+            try:
+                async with self._session.get(
+                    f"{STIGA_BASE_URL}{path}",
+                    headers=self._auth_header(),
+                    timeout=timeout,
+                ) as resp:
+                    if resp.status == 401 and retry:
+                        _LOGGER.debug("Token expired – re-authenticating.")
+                        await self.authenticate()
+                        return await self._get(path, retry=False)
+                    # 5xx are transient cloud-side hiccups; retry before giving
+                    # up so a brief outage doesn't flap entities. 4xx are caller
+                    # errors and surface immediately.
+                    if resp.status >= 500:
+                        last_err = StigaApiError(f"GET {path} → HTTP {resp.status}")
+                    elif resp.status != 200:
+                        raise StigaApiError(f"GET {path} → HTTP {resp.status}")
+                    else:
+                        return await resp.json()
+            except aiohttp.ClientError as err:
+                # Connection-level drops (ServerDisconnectedError, ClientOSError,
+                # ConnectionResetError…) are exactly the "connection broke"
+                # symptom; a quick retry usually rides over them.
+                last_err = StigaApiError(f"Network error: {err}")
+            except TimeoutError as err:
+                # A timeout already consumed REQUEST_TIMEOUT seconds; retrying
+                # risks blowing the coordinator's per-cycle budget.
+                raise StigaApiError(f"Timeout on GET {path} (>{REQUEST_TIMEOUT}s)") from err
 
-    async def _post(self, path: str, body=None, retry: bool = True):
+            if attempt < REQUEST_RETRIES:
+                await asyncio.sleep(RETRY_BACKOFF * (attempt + 1))
+                _LOGGER.debug("Retrying GET %s (attempt %d): %s", path, attempt + 2, last_err)
+
+        raise last_err or StigaApiError(f"GET {path} failed after {REQUEST_RETRIES + 1} attempts")
+
+    async def _post(self, path: str, body: Any = None, retry: bool = True) -> Any:
         if not self._token:
             await self.authenticate()
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
@@ -146,7 +189,7 @@ class StigaAPI:
 
     # ------------------------------------------------------------------ Devices
 
-    async def get_devices(self) -> list[dict]:
+    async def get_devices(self) -> list[dict[str, Any]]:
         """Return the device list, preferring the richer /garage endpoint.
 
         The undocumented `/garage` returns the same structure as the
@@ -168,17 +211,21 @@ class StigaAPI:
         return self._extract_devices(raw)
 
     @staticmethod
-    def _extract_devices(raw) -> list[dict]:
+    def _extract_devices(raw: Any) -> list[dict[str, Any]]:
         if isinstance(raw, list):
             return raw
         if isinstance(raw, dict):
             for key in ("Data", "data", "devices", "robots", "items"):
                 if isinstance(raw.get(key), list):
-                    return raw[key]
-            return [raw]
+                    return list(raw[key])
+            # Treat a bare dict as a single device only if it actually looks like
+            # one. A degraded 200-body such as `{"error": ...}` must not be
+            # surfaced as a phantom device that overwrites the cached list.
+            if "attributes" in raw:
+                return [raw]
         return []
 
-    async def get_bases(self) -> list[dict]:
+    async def get_bases(self) -> list[dict[str, Any]]:
         """Return base-station records from /garage `included[OwnBases]`.
 
         Each entry is the flat `attributes` dict (uuid, mac_address,
@@ -201,20 +248,26 @@ class StigaAPI:
             # different `type` (e.g. richer Vision Cam / Smart Base SKUs).
             included = raw.get("included")
             if isinstance(included, list):
-                types = sorted({i.get("type") for i in included if isinstance(i, dict)})
+                types = sorted(
+                    {
+                        t
+                        for i in included
+                        if isinstance(i, dict) and (t := i.get("type")) is not None
+                    }
+                )
                 _LOGGER.debug("/garage included[] types: %s", types or "<none>")
             else:
                 _LOGGER.debug("/garage response has no included[] section")
         return bases
 
     @staticmethod
-    def _extract_bases(raw) -> list[dict]:
+    def _extract_bases(raw: Any) -> list[dict[str, Any]]:
         if not isinstance(raw, dict):
             return []
         included = raw.get("included")
         if not isinstance(included, list):
             return []
-        out: list[dict] = []
+        out: list[dict[str, Any]] = []
         for item in included:
             if not isinstance(item, dict) or item.get("type") != "OwnBases":
                 continue
@@ -227,7 +280,7 @@ class StigaAPI:
             out.append(entry)
         return out
 
-    async def get_device_extended(self, uuid: str) -> dict:
+    async def get_device_extended(self, uuid: str) -> dict[str, Any]:
         """GET /devices/{uuid} – richer per-device record with `included[]`.
 
         Undocumented; only used to surface the friendly model name (e.g.
@@ -240,7 +293,7 @@ class StigaAPI:
             _LOGGER.debug("/devices/%s unavailable: %s", uuid, err)
             return {}
 
-    async def get_perimeter(self, uuid: str, base_uuid: str) -> dict:
+    async def get_perimeter(self, uuid: str, base_uuid: str) -> dict[str, Any]:
         """GET /perimeters?device_uuid=&base_uuid= – garden perimeter summary.
 
         Both query params are mandatory. Undocumented. Returns the raw
@@ -254,7 +307,7 @@ class StigaAPI:
 
     # ------------------------------------------------------------------ Status
 
-    async def get_device_status(self, uuid: str) -> dict:
+    async def get_device_status(self, uuid: str) -> dict[str, Any]:
         """GET /devices/{uuid}/mqttstatus – fetch and parse raw status.
 
         NOTE: this endpoint is NOT part of the official STIGA Integration API
@@ -266,16 +319,17 @@ class StigaAPI:
         return self._parse_status(raw)
 
     @staticmethod
-    def _load_json_field(val) -> dict:
+    def _load_json_field(val: Any) -> dict[str, Any]:
         if isinstance(val, str):
             try:
-                return json.loads(val)
+                parsed = json.loads(val)
             except json.JSONDecodeError:
                 _LOGGER.warning("Failed to parse JSON field: %.120r", val)
                 return {}
-        return val or {}
+            return parsed if isinstance(parsed, dict) else {}
+        return val if isinstance(val, dict) else {}
 
-    def _parse_status(self, raw: dict) -> dict:
+    def _parse_status(self, raw: dict[str, Any]) -> dict[str, Any]:
         """
         Parse the mqttstatus response.
         Known structure (vista_robot):
@@ -305,7 +359,7 @@ class StigaAPI:
         return {}
 
     @staticmethod
-    def _build_status(s: dict, b: dict) -> dict:
+    def _build_status(s: dict[str, Any], b: dict[str, Any]) -> dict[str, Any]:
         """Build a flat status dict from raw API data."""
         ca = s.get("currentAction")
         mm = s.get("mowingMode")
@@ -324,7 +378,9 @@ class StigaAPI:
             power_w = round(abs(current) * voltage, 2)
 
         health = None
-        if cap and rem:
+        # `cap` must be truthy to avoid division by zero; `rem` may legitimately
+        # be 0 (empty pack), so guard it with `is not None`, not truthiness.
+        if cap and rem is not None:
             health = round((rem / cap) * 100, 1)
 
         # Fields already represented as first-class attributes – don't echo them
@@ -341,7 +397,7 @@ class StigaAPI:
             # Batterie
             "battery_level": pct,
             "battery_charging": charging,
-            "battery_voltage": round(voltage, 3) if voltage else None,
+            "battery_voltage": round(voltage, 3) if voltage is not None else None,
             "battery_capacity": cap,
             "battery_remaining": rem,
             "battery_cycles": cycles,

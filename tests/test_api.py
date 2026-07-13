@@ -137,3 +137,93 @@ def test_extract_bases_returns_empty_for_missing_included() -> None:
     assert StigaAPI._extract_bases({"data": []}) == []
     assert StigaAPI._extract_bases([]) == []
     assert StigaAPI._extract_bases(None) == []
+
+
+# ---------------------------------------------------------------- _get retry logic
+
+
+def _resp(status: int, body=None) -> MagicMock:
+    resp = MagicMock()
+    resp.status = status
+    resp.json = AsyncMock(return_value=body if body is not None else {"ok": True})
+    return resp
+
+
+def _mock_session_get_sequence(items: list) -> MagicMock:
+    """Session whose .get yields one item per call: a response or an exception.
+
+    A response item is returned from __aenter__; an Exception item is raised
+    from __aenter__ (mimicking a connection-level failure mid-request).
+    """
+    session = MagicMock()
+    calls = iter(items)
+
+    def _next_ctx(*_args, **_kwargs):
+        item = next(calls)
+        ctx = MagicMock()
+        if isinstance(item, BaseException):
+            ctx.__aenter__ = AsyncMock(side_effect=item)
+        else:
+            ctx.__aenter__ = AsyncMock(return_value=item)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    session.get = MagicMock(side_effect=_next_ctx)
+    return session
+
+
+@pytest.fixture(autouse=True)
+def _no_sleep(monkeypatch):
+    """Skip the retry backoff delay in tests."""
+    monkeypatch.setattr("custom_components.stiga_mower.api.asyncio.sleep", AsyncMock())
+
+
+async def test_get_retries_then_succeeds_on_connection_drop() -> None:
+    """A dropped connection is retried and the next good response wins."""
+    session = _mock_session_get_sequence(
+        [aiohttp.ServerDisconnectedError(), _resp(200, {"data": 1})]
+    )
+    api = _build_api(session)
+    assert await api._get("/x") == {"data": 1}
+    assert session.get.call_count == 2
+
+
+async def test_get_retries_on_5xx_then_succeeds() -> None:
+    """A transient 5xx is retried before surfacing."""
+    session = _mock_session_get_sequence([_resp(503), _resp(200, {"data": 2})])
+    api = _build_api(session)
+    assert await api._get("/x") == {"data": 2}
+    assert session.get.call_count == 2
+
+
+async def test_get_gives_up_after_exhausting_retries() -> None:
+    """Persistent failures raise StigaApiError after all attempts (3 total)."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    session = _mock_session_get_sequence([aiohttp.ClientOSError()] * 3)
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._get("/x")
+    assert session.get.call_count == 3
+
+
+async def test_get_does_not_retry_4xx() -> None:
+    """A 4xx is a caller error and must surface immediately, no retry."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    session = _mock_session_get_sequence([_resp(404)])
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._get("/x", retry=False)
+    assert session.get.call_count == 1
+
+
+async def test_get_does_not_retry_timeout() -> None:
+    """Timeouts already consumed the budget; they surface without retrying."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    session = _mock_session_get_sequence([TimeoutError()])
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._get("/x")
+    assert session.get.call_count == 1

@@ -166,6 +166,12 @@
     },
     "calendar_unknown_uid": {
       "message": "Cannot delete this schedule entry: unknown event id \"{uid}\"."
+    },
+    "calendar_schedule_not_loaded": {
+      "message": "The schedule cannot be edited yet because the mower has not reported it. Please try again in a moment."
+    },
+    "invalid_cutting_height": {
+      "message": "Cutting height {value} mm is not supported. Choose one of: {allowed} mm."
     }
   }
 }

@@ -354,3 +354,47 @@ async def test_calendar_materialize_preserves_wall_time_across_dst(hass, freezer
     assert sun.end.time() == dt.time(13, 0)
     # The window is after the 02:00→03:00 jump, so CEST (UTC+2) is in effect.
     assert sun.start.utcoffset() == dt.timedelta(hours=2)
+
+
+@pytest.mark.asyncio
+async def test_calendar_update_event_moves_window_in_single_publish(hass) -> None:
+    """Editing a window must delete+re-create in ONE atomic publish, not two."""
+    c = make_coordinator(hass)
+    _set_schedule(c, [{16, 17, 18, 19}] + [set()] * 6)  # Mon 08:00–10:00
+    cal = _calendar(c)
+    await cal.async_update_event(
+        uid=make_uid(cal._uuid, 0, 16),
+        event={
+            "dtstart": dt.datetime(2026, 5, 18, 9, 0, tzinfo=dt_util.DEFAULT_TIME_ZONE),
+            "dtend": dt.datetime(2026, 5, 18, 10, 0, tzinfo=dt_util.DEFAULT_TIME_ZONE),
+            "rrule": "FREQ=WEEKLY;BYDAY=MO",
+        },
+    )
+    # Exactly one SCHEDULING_SETTINGS_UPDATE, not two (no partial-failure window loss).
+    c.mqtt.cmd_schedule_set_enabled.assert_awaited_once()
+    new_days = c.data["live_schedule"]["MAC1"]["days"]
+    # Old block (16-19) gone, new 09:00–10:00 = slots 18,19.
+    assert new_days[0]["slots"] == {18, 19}
+
+
+@pytest.mark.asyncio
+async def test_calendar_update_event_unknown_uid_raises(hass) -> None:
+    c = make_coordinator(hass)
+    _set_schedule(c, [{16, 17}] + [set()] * 6)
+    cal = _calendar(c)
+    with pytest.raises(HomeAssistantError):
+        await cal.async_update_event(uid="not-a-stiga-uid", event={})
+    c.mqtt.cmd_schedule_set_enabled.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_calendar_write_refused_before_schedule_received(hass) -> None:
+    """No SCHEDULING frame yet (no 'days' key) → a create must refuse, not wipe."""
+    c = make_coordinator(hass)  # live_schedule for MAC1 is absent entirely
+    cal = _calendar(c)
+    with pytest.raises(HomeAssistantError):
+        await cal.async_create_event(
+            dtstart=dt.datetime(2026, 5, 18, 9, 0, tzinfo=dt_util.DEFAULT_TIME_ZONE),
+            dtend=dt.datetime(2026, 5, 18, 10, 0, tzinfo=dt_util.DEFAULT_TIME_ZONE),
+        )
+    c.mqtt.cmd_schedule_set_enabled.assert_not_awaited()

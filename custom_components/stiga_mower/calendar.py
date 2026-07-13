@@ -42,6 +42,10 @@ from .mqtt_messages import pack_schedule
 
 _LOGGER = logging.getLogger(__name__)
 
+# Serialise writes: every edit is a read-modify-write of the single atomic
+# 48-slot schedule blob, so concurrent edits would race and lose windows.
+PARALLEL_UPDATES = 1
+
 SLOTS_PER_DAY = 48
 _SLOT_MINUTES = 30
 _BYDAY_NAMES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
@@ -301,22 +305,7 @@ class StigaMowingCalendar(CoordinatorEntity[StigaDataUpdateCoordinator], Calenda
                 translation_key="calendar_unknown_uid",
                 translation_placeholders={"uid": str(uid)},
             )
-        day_idx, start_slot = parsed
-        days = [dict(d) for d in self._days()]
-        if day_idx >= len(days):
-            return
-        slots = set(days[day_idx].get("slots") or set())
-        block = _find_block(slots, start_slot)
-        if block is None:
-            _LOGGER.debug(
-                "delete_event: no block starting at slot %d on day %d", start_slot, day_idx
-            )
-            return
-        block_start, block_end = block
-        for s in range(block_start, block_end + 1):
-            slots.discard(s)
-        days[day_idx]["slots"] = slots
-        await self._publish(days)
+        await self._modify(remove=[parsed])
 
     async def async_update_event(
         self,
@@ -325,16 +314,76 @@ class StigaMowingCalendar(CoordinatorEntity[StigaDataUpdateCoordinator], Calenda
         recurrence_id: str | None = None,
         recurrence_range: str | None = None,
     ) -> None:
-        await self.async_delete_event(uid)
-        await self.async_create_event(**event)
+        """Move a window in a single atomic write.
+
+        The window is deleted and re-created in one read-modify-write of the
+        48-slot blob, then published exactly once. Chaining separate delete +
+        create would send two SCHEDULING_SETTINGS_UPDATE frames, and a failure
+        of the second would drop the window entirely.
+        """
+        parsed = parse_uid(uid)
+        if parsed is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="calendar_unknown_uid",
+                translation_placeholders={"uid": str(uid)},
+            )
+        start = event.get("dtstart")
+        end = event.get("dtend")
+        if not isinstance(start, dt.datetime) or not isinstance(end, dt.datetime):
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="calendar_no_all_day"
+            )
+        target_day_indices = _byday_indices_from_rrule(
+            event.get("rrule"), default_weekday=start.weekday()
+        )
+        await self._modify(
+            remove=[parsed],
+            add=[(d, start.time(), end.time()) for d in target_day_indices],
+        )
 
     # -------------------------- write helpers
 
-    async def _modify(self, *, add: list[tuple[int, dt.time, dt.time]]) -> None:
+    def _ensure_loaded(self) -> None:
+        """Refuse edits until the mower has reported its schedule.
+
+        Before the first SCHEDULING frame, ``live_schedule[mac]`` has no
+        ``days`` key. Writing then would build the atomic blob from an empty
+        7-day list and wipe the user's real weekly plan (which we simply have
+        not received yet), so refuse the edit instead.
+        """
+        sched = self.coordinator.data.get("live_schedule", {}).get(self._mac, {})
+        if "days" not in sched:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="calendar_schedule_not_loaded"
+            )
+
+    async def _modify(
+        self,
+        *,
+        add: list[tuple[int, dt.time, dt.time]] | None = None,
+        remove: list[tuple[int, int]] | None = None,
+    ) -> None:
+        """Apply removals and additions to the weekly grid, then publish once."""
+        self._ensure_loaded()
         days = [dict(d) for d in self._days()]
         while len(days) < 7:
             days.append({"slots": set()})
-        for day_idx, start_t, end_t in add:
+        before = [frozenset(d.get("slots") or ()) for d in days]
+
+        for day_idx, start_slot in remove or []:
+            if not 0 <= day_idx < len(days):
+                continue
+            slots = set(days[day_idx].get("slots") or set())
+            block = _find_block(slots, start_slot)
+            if block is not None:
+                for s in range(block[0], block[1] + 1):
+                    slots.discard(s)
+            days[day_idx]["slots"] = slots
+
+        for day_idx, start_t, end_t in add or []:
+            if not 0 <= day_idx < len(days):
+                continue
             start_slot = time_to_slot(start_t)
             end_slot = max(time_to_end_slot(end_t), start_slot + 1)
             slots = set(days[day_idx].get("slots") or set())
@@ -342,6 +391,10 @@ class StigaMowingCalendar(CoordinatorEntity[StigaDataUpdateCoordinator], Calenda
                 if 0 <= s < SLOTS_PER_DAY:
                     slots.add(s)
             days[day_idx]["slots"] = slots
+
+        if [frozenset(d.get("slots") or ()) for d in days] == before:
+            _LOGGER.debug("schedule edit is a no-op; skipping MQTT write")
+            return
         await self._publish(days)
 
     async def _publish(self, days: list[dict[str, Any]]) -> None:

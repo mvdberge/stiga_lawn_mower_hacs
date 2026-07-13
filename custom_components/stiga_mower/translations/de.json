@@ -163,6 +163,12 @@
     },
     "calendar_unknown_uid": {
       "message": "Dieser Zeitplan-Eintrag kann nicht gelöscht werden: unbekannte Event-ID „{uid}“."
+    },
+    "calendar_schedule_not_loaded": {
+      "message": "Der Zeitplan kann noch nicht bearbeitet werden, weil der Mäher ihn noch nicht gemeldet hat. Bitte versuche es gleich noch einmal."
+    },
+    "invalid_cutting_height": {
+      "message": "Schnitthöhe {value} mm wird nicht unterstützt. Wähle eine von: {allowed} mm."
     }
   }
 }

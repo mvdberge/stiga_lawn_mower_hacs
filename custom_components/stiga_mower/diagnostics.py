@@ -12,7 +12,25 @@ from . import StigaConfigEntry
 from .const import CONF_EMAIL, CONF_PASSWORD
 
 REDACT_ENTRY_DATA = {CONF_EMAIL, CONF_PASSWORD}
-REDACT_DEVICE_FIELDS = {"serial_number", "uuid", "name"}
+# The /api/garage device `attributes` dict carries a broad set of hardware and
+# account identifiers. Redact every one that can identify the device, its owner,
+# the SIM, the broker or the mower's physical location — not just the name/uuid.
+REDACT_DEVICE_FIELDS = {
+    "serial_number",
+    "uuid",
+    "name",
+    "mac_address",
+    "base_uuid",
+    "sim_uuid",
+    "device_detail_uuid",
+    "store_uuid",
+    "perimeter_uuid",
+    "buyer_uuid",
+    "country_uuid",
+    "magento_registration_id",
+    "broker_id",
+    "last_position",
+}
 REDACT_BASE_FIELDS = {"serial_number", "uuid", "mac_address"}
 
 

@@ -57,43 +57,66 @@ class StigaAPI:
 
     # ------------------------------------------------------------------ Auth
 
-    async def authenticate(self) -> None:
-        """Firebase login – stores idToken internally.
+    async def _login(self) -> None:
+        """Perform the Firebase password login. Caller must hold ``_auth_lock``.
 
-        Serialised by an asyncio lock so concurrent callers (the MQTT token
-        provider plus a 401 retry, or several parallel REST calls) cannot
-        interleave and corrupt ``self._token`` or fire redundant logins.
+        Kept private and lock-free so both the cache-aware ``get_token`` and the
+        401 recovery path (``authenticate``) can drive it without re-entering the
+        non-reentrant lock.
         """
-        async with self._auth_lock:
-            timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-            try:
-                async with self._session.post(
-                    FIREBASE_AUTH_URL,
-                    json={
-                        "email": self._email,
-                        "password": self._password,
-                        "returnSecureToken": True,
-                    },
-                    params={"key": FIREBASE_API_KEY},
-                    timeout=timeout,
-                ) as resp:
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        try:
+            async with self._session.post(
+                FIREBASE_AUTH_URL,
+                json={
+                    "email": self._email,
+                    "password": self._password,
+                    "returnSecureToken": True,
+                },
+                params={"key": FIREBASE_API_KEY},
+                timeout=timeout,
+            ) as resp:
+                try:
                     data = await resp.json()
-                    if resp.status != 200:
-                        msg = data.get("error", {}).get("message", str(resp.status))
-                        raise StigaAuthError(f"Authentication failed: {msg}")
-                    self._token = data["idToken"]
-                    # Firebase id-tokens are valid ~1 h; refresh a minute early
-                    # so we never use a token that expires mid-request.
-                    try:
-                        expires_in = float(data.get("expiresIn", 3600))
-                    except (TypeError, ValueError):
-                        expires_in = 3600.0
-                    self._token_expiry = time.monotonic() + max(expires_in - 60.0, 60.0)
-                    _LOGGER.debug("Firebase authentication successful.")
-            except aiohttp.ClientError as err:
-                raise StigaApiError(f"Network error during authentication: {err}") from err
-            except TimeoutError as err:
-                raise StigaApiError(f"Timeout during authentication (>{REQUEST_TIMEOUT}s)") from err
+                except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
+                    raise StigaApiError(
+                        f"Authentication returned a non-JSON body (HTTP {resp.status})"
+                    ) from err
+                if not isinstance(data, dict):
+                    raise StigaApiError("Authentication returned an unexpected body")
+                if resp.status != 200:
+                    msg = (data.get("error") or {}).get("message", str(resp.status))
+                    raise StigaAuthError(f"Authentication failed: {msg}")
+                token = data.get("idToken")
+                if not token:
+                    raise StigaAuthError("Authentication response contained no idToken")
+                self._token = token
+                # Firebase id-tokens are valid ~1 h; refresh a minute early
+                # so we never use a token that expires mid-request.
+                try:
+                    expires_in = float(data.get("expiresIn", 3600))
+                except (TypeError, ValueError):
+                    expires_in = 3600.0
+                self._token_expiry = time.monotonic() + max(expires_in - 60.0, 60.0)
+                _LOGGER.debug("Firebase authentication successful.")
+        except aiohttp.ClientError as err:
+            raise StigaApiError(f"Network error during authentication: {err}") from err
+        except TimeoutError as err:
+            raise StigaApiError(f"Timeout during authentication (>{REQUEST_TIMEOUT}s)") from err
+
+    async def authenticate(self) -> None:
+        """Force a fresh Firebase login (used for the 401 re-auth retry).
+
+        Serialised behind ``_auth_lock``. If a concurrent caller already
+        replaced the (rejected) token while we waited for the lock, skip the
+        redundant login so several parallel requests that 401 at once do not
+        trigger a re-login storm.
+        """
+        prev = self._token
+        async with self._auth_lock:
+            if self._token is not None and self._token != prev:
+                return
+            await self._login()
 
     async def get_token(self) -> str:
         """Return a valid Firebase id-token, re-authenticating only when needed.
@@ -105,7 +128,12 @@ class StigaAPI:
         """
         if self._token and time.monotonic() < self._token_expiry:
             return self._token
-        await self.authenticate()
+        async with self._auth_lock:
+            # Double-checked: another caller may have refreshed the token while
+            # we were waiting for the lock — return theirs instead of logging in.
+            if self._token and time.monotonic() < self._token_expiry:
+                return self._token
+            await self._login()
         if not self._token:
             raise StigaAuthError("authenticate() returned without a token")
         return self._token
@@ -137,7 +165,14 @@ class StigaAPI:
                     elif resp.status != 200:
                         raise StigaApiError(f"GET {path} → HTTP {resp.status}")
                     else:
-                        return await resp.json()
+                        try:
+                            return await resp.json()
+                        except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
+                            # HTTP 200 but a truncated/garbage body — the cloud
+                            # emits these during instability. Treat as transient:
+                            # retry, then surface as StigaApiError so the
+                            # coordinator keeps cached data instead of crashing.
+                            last_err = StigaApiError(f"GET {path} returned a non-JSON body: {err}")
             except aiohttp.ClientError as err:
                 # Connection-level drops (ServerDisconnectedError, ClientOSError,
                 # ConnectionResetError…) are exactly the "connection broke"

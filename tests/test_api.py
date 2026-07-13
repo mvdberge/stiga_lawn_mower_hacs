@@ -227,3 +227,45 @@ async def test_get_does_not_retry_timeout() -> None:
     with pytest.raises(StigaApiError):
         await api._get("/x")
     assert session.get.call_count == 1
+
+
+async def test_get_wraps_malformed_json_body() -> None:
+    """A 200 with a non-JSON body raises StigaApiError, not a raw JSONDecodeError."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    bad = _resp(200)
+    bad.json = AsyncMock(side_effect=json.JSONDecodeError("bad", "", 0))
+    session = _mock_session_get_sequence([bad, bad, bad])
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._get("/x")
+    assert session.get.call_count == 3
+
+
+async def test_get_token_double_checked_lock_single_login() -> None:
+    """Concurrent get_token() callers trigger exactly one Firebase login."""
+    import asyncio as _asyncio
+
+    resp = MagicMock()
+    resp.status = 200
+    resp.json = AsyncMock(return_value={"idToken": "T", "expiresIn": "3600"})
+    session = _mock_session_post(resp)
+    api = StigaAPI(email=TEST_EMAIL, password=TEST_PASSWORD, session=session)
+
+    tokens = await _asyncio.gather(api.get_token(), api.get_token(), api.get_token())
+
+    assert tokens == ["T", "T", "T"]
+    assert session.post.call_count == 1
+
+
+async def test_authenticate_wraps_malformed_json_body() -> None:
+    """A non-JSON auth response surfaces as StigaApiError, not a raw decode error."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    resp = MagicMock()
+    resp.status = 200
+    resp.json = AsyncMock(side_effect=json.JSONDecodeError("bad", "", 0))
+    session = _mock_session_post(resp)
+    api = StigaAPI(email=TEST_EMAIL, password=TEST_PASSWORD, session=session)
+    with pytest.raises(StigaApiError):
+        await api.authenticate()

@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.stiga_mower.coordinator import StigaDataUpdateCoordinator
-from custom_components.stiga_mower.sensor import SENSOR_DESCRIPTIONS, StigaSensor
+from custom_components.stiga_mower.sensor import (
+    SENSOR_DESCRIPTIONS,
+    StigaActiveErrorSensor,
+    StigaSensor,
+)
 
 
 def _make_coordinator(hass, *, statuses=None, mqtt_connected=True, meta=None):
@@ -26,7 +30,8 @@ def _make_coordinator(hass, *, statuses=None, mqtt_connected=True, meta=None):
 def _sensor(coordinator, key):
     desc = next(d for d in SENSOR_DESCRIPTIONS if d.key == key)
     device = coordinator.data["devices"][0]
-    return StigaSensor(coordinator, device, desc)
+    cls = StigaActiveErrorSensor if key == "active_error" else StigaSensor
+    return cls(coordinator, device, desc)
 
 
 # ------------------------------------------------------------------ Zone / progress sensors
@@ -166,3 +171,33 @@ def test_meta_sensor_available_when_field_present(hass) -> None:
     s = _sensor(c, "garden_area")
     assert s.available is True
     assert s.native_value == 656
+
+
+# ------------------------------------------------------------------ active error sensor
+
+
+def test_active_error_known_code(hass) -> None:
+    # A known error_code maps to its human-readable description, and the raw code
+    # is exposed as an attribute so automations can match on it.
+    c = _make_coordinator(hass, statuses={"error_code": 0x0064, "has_data": True})
+    s = _sensor(c, "active_error")
+    assert s.native_value == "low_battery"
+    assert s.extra_state_attributes == {"error_code": 0x0064}
+
+
+def test_active_error_none_when_no_code(hass) -> None:
+    # No active error_code → state is None ("no error"), no attributes.
+    c = _make_coordinator(hass, statuses={"has_data": True})
+    s = _sensor(c, "active_error")
+    assert s.native_value is None
+    assert s.extra_state_attributes is None
+
+
+def test_active_error_unknown_code_falls_back_to_raw(hass) -> None:
+    # An error_code unknown to ERROR_INFO_CODES still yields a readable, non-None
+    # state (the stringified raw code) rather than dropping the fault entirely.
+    c = _make_coordinator(hass, statuses={"error_code": 99999, "has_data": True})
+    s = _sensor(c, "active_error")
+    assert s.native_value is not None
+    assert s.native_value == "99999"
+    assert s.extra_state_attributes == {"error_code": 99999}

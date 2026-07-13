@@ -213,36 +213,11 @@ SCHEDULE_SLOT_MINUTES = 30
 # ---------------------------------------------------------------- Base topics
 
 BASE_TOPIC_LOG_WILDCARD = "{mac}/LOG/+"
-BASE_TOPIC_CMD = "{mac}/CMD_REFERENCE"
 BASE_TOPIC_CMD_ACK = "CMD_REFERENCE_ACK/{mac}"
 BASE_TOPIC_NOTIFICATION = "{mac}/JSON_NOTIFICATION"
 
 BASE_LOG_STATUS = "STATUS"
 BASE_LOG_VERSION = "VERSION"
-
-# ---------------------------------------------------------------- Base commands
-
-BASE_CMD_VERSION_REQUEST = 1
-BASE_CMD_UNKNOWN_3 = 3
-BASE_CMD_UNKNOWN_4 = 4
-BASE_CMD_UNKNOWN_5 = 5
-BASE_CMD_PUBLISH_START = 6
-BASE_CMD_PUBLISH_STOP = 7
-BASE_CMD_STATUS_REQUEST = 8
-BASE_CMD_UNKNOWN_13 = 13
-BASE_CMD_SETTINGS_UPDATE = 15
-
-BASE_CMD_NAMES: dict[int, str] = {
-    BASE_CMD_VERSION_REQUEST: "VERSION_REQUEST",
-    BASE_CMD_UNKNOWN_3: "UNKNOWN_3",
-    BASE_CMD_UNKNOWN_4: "UNKNOWN_4",
-    BASE_CMD_UNKNOWN_5: "UNKNOWN_5",
-    BASE_CMD_PUBLISH_START: "PUBLISH_START",
-    BASE_CMD_PUBLISH_STOP: "PUBLISH_STOP",
-    BASE_CMD_STATUS_REQUEST: "STATUS_REQUEST",
-    BASE_CMD_UNKNOWN_13: "UNKNOWN_13",
-    BASE_CMD_SETTINGS_UPDATE: "SETTINGS_UPDATE",
-}
 
 # ---------------------------------------------------------------- Base status
 
@@ -261,9 +236,9 @@ BASE_STATUS_FLAGS: dict[int, str] = {
     3: "ERROR",
 }
 
-BASE_LED_MODES: dict[str, int] = {
-    "off": 0,
-    "always": 1,
-    "scheduled": 2,
+# Wire index -> LED-mode name, used to decode field 10 of `LOG/STATUS`.
+BASE_LED_MODE_INDEX_TO_NAME: dict[int, str] = {
+    0: "off",
+    1: "always",
+    2: "scheduled",
 }
-BASE_LED_MODE_INDEX_TO_NAME: dict[int, str] = {v: k for k, v in BASE_LED_MODES.items()}

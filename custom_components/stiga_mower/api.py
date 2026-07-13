@@ -20,6 +20,7 @@ from .const import (
     EP_STOP,
     FIREBASE_API_KEY,
     FIREBASE_AUTH_URL,
+    FIREBASE_REFRESH_URL,
     REQUEST_RETRIES,
     REQUEST_TIMEOUT,
     RETRY_BACKOFF,
@@ -50,6 +51,9 @@ class StigaAPI:
         self._password = password
         self._session = session
         self._token: str | None = None
+        # Firebase refresh token from the last login; lets us swap an expired
+        # id-token for a fresh one without re-sending the password.
+        self._refresh_token: str | None = None
         # Monotonic deadline after which the cached token is considered stale.
         self._token_expiry: float = 0.0
         # Serialises logins so concurrent callers can't interleave/double-login.
@@ -91,6 +95,9 @@ class StigaAPI:
                 if not token:
                     raise StigaAuthError("Authentication response contained no idToken")
                 self._token = token
+                # verifyPassword returns the refresh token in camelCase; keep
+                # it so future expiries can use the cheap securetoken exchange.
+                self._refresh_token = data.get("refreshToken")
                 # Firebase id-tokens are valid ~1 h; refresh a minute early
                 # so we never use a token that expires mid-request.
                 try:
@@ -103,6 +110,54 @@ class StigaAPI:
             raise StigaApiError(f"Network error during authentication: {err}") from err
         except TimeoutError as err:
             raise StigaApiError(f"Timeout during authentication (>{REQUEST_TIMEOUT}s)") from err
+
+    async def _refresh(self) -> bool:
+        """Swap the stored refresh token for a fresh id-token via securetoken.
+
+        Caller must hold ``_auth_lock``. Cheaper than a full password login and
+        avoids ``TOO_MANY_ATTEMPTS`` rate-limiting. Returns ``True`` on success;
+        on any failure returns ``False`` (never raises) so the caller can fall
+        back to a full ``_login``. NOTE: the securetoken response uses snake_case
+        keys (``id_token``, ``refresh_token``, ``expires_in``), unlike the
+        camelCase verifyPassword body.
+        """
+        if not self._refresh_token:
+            return False
+        timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
+        try:
+            async with self._session.post(
+                FIREBASE_REFRESH_URL,
+                json={
+                    "grant_type": "refresh_token",
+                    "refresh_token": self._refresh_token,
+                },
+                params={"key": FIREBASE_API_KEY},
+                timeout=timeout,
+            ) as resp:
+                try:
+                    data = await resp.json()
+                except (json.JSONDecodeError, aiohttp.ContentTypeError):
+                    return False
+                if not isinstance(data, dict) or resp.status != 200:
+                    return False
+                token = data.get("id_token")
+                if not token:
+                    return False
+                self._token = token
+                try:
+                    expires_in = float(data.get("expires_in", 3600))
+                except (TypeError, ValueError):
+                    expires_in = 3600.0
+                self._token_expiry = time.monotonic() + max(expires_in - 60.0, 60.0)
+                # securetoken may hand back a rotated refresh token; keep it.
+                if new_refresh := data.get("refresh_token"):
+                    self._refresh_token = new_refresh
+                _LOGGER.debug("Firebase token refresh successful.")
+                return True
+        except aiohttp.ClientError:
+            return False
+        except TimeoutError:
+            return False
 
     async def authenticate(self) -> None:
         """Force a fresh Firebase login (used for the 401 re-auth retry).
@@ -133,7 +188,11 @@ class StigaAPI:
             # we were waiting for the lock — return theirs instead of logging in.
             if self._token and time.monotonic() < self._token_expiry:
                 return self._token
-            await self._login()
+            # Prefer the cheap securetoken refresh over a full password login;
+            # fall back to a full login only when no refresh token is stored or
+            # the refresh exchange fails.
+            if not (self._refresh_token and await self._refresh()):
+                await self._login()
         if not self._token:
             raise StigaAuthError("authenticate() returned without a token")
         return self._token

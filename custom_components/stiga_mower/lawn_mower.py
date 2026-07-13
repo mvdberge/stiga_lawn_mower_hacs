@@ -356,7 +356,21 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         return self._device_attrs().get("mac_address")
 
     async def async_start_mowing(self) -> None:
-        """Start a mowing session."""
+        """Start a mowing session via MQTT when connected, else REST."""
+        mqtt = self.coordinator.mqtt
+        mac = self._mac()
+        if mqtt is not None and mac is not None and mqtt.connected:
+            try:
+                await mqtt.cmd_start(mac)
+                await self.coordinator.async_request_refresh()
+                return
+            except Exception as err:
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="start_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
+        # MQTT not available — start via REST.
         try:
             await self.coordinator.api.start_mowing(self._uuid)
             await self.coordinator.async_request_refresh()

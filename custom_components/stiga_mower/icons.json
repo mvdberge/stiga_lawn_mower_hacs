@@ -24,6 +24,7 @@
       "long_exit": { "default": "mdi:exit-run" }
     },
     "sensor": {
+      "active_error": { "default": "mdi:alert-circle" },
       "current_zone": { "default": "mdi:map-marker" },
       "zone_count": { "default": "mdi:select-group" },
       "zone_area": { "default": "mdi:texture-box" },

@@ -20,6 +20,9 @@ RETRY_BACKOFF = 0.5  # seconds; grows linearly per attempt (0.5s, 1.0s)
 # Firebase Auth (publicly embedded in STIGA app code)
 FIREBASE_API_KEY = "AIzaSyCPtRBU_hwWZYsguHp9ucGrfNac0kXR6ug"
 FIREBASE_AUTH_URL = "https://www.googleapis.com/identitytoolkit/v3/relyingparty/verifyPassword"
+# Firebase securetoken endpoint — exchanges a refresh token for a fresh
+# id-token without re-sending the password (avoids TOO_MANY_ATTEMPTS).
+FIREBASE_REFRESH_URL = "https://securetoken.googleapis.com/v1/token"
 
 # STIGA Cloud API
 STIGA_BASE_URL = "https://connectivity-production.stiga.com/api"

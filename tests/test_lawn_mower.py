@@ -56,6 +56,32 @@ async def test_lawn_mower_dock_falls_back_to_rest_when_mqtt_off(hass) -> None:
     c.mqtt.cmd_go_home.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_lawn_mower_start_uses_mqtt(hass) -> None:
+    c = make_coordinator(hass, rest_status={"has_data": True})
+    c.mqtt.cmd_start = AsyncMock()
+    c.api.start_mowing = AsyncMock()
+    mower = StigaLawnMower(c, device(c))
+    await mower.async_start_mowing()
+    c.mqtt.cmd_start.assert_awaited_once_with("MAC1")
+    c.api.start_mowing.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_lawn_mower_start_falls_back_to_rest_when_mqtt_off(hass) -> None:
+    c = make_coordinator(
+        hass,
+        rest_status={"has_data": True},
+        mqtt_connected=False,
+    )
+    c.api.start_mowing = AsyncMock()
+    c.mqtt.cmd_start = AsyncMock()
+    mower = StigaLawnMower(c, device(c))
+    await mower.async_start_mowing()
+    c.api.start_mowing.assert_awaited_once_with("u1")
+    c.mqtt.cmd_start.assert_not_awaited()
+
+
 # ---------------------------------------------------------------- state mapping
 
 

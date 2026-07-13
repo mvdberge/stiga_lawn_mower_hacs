@@ -67,7 +67,6 @@ def test_base_status_types_have_expected_value() -> None:
         mc.ROBOT_TOPIC_CMD_ACK,
         mc.ROBOT_TOPIC_NOTIFICATION,
         mc.BASE_TOPIC_LOG_WILDCARD,
-        mc.BASE_TOPIC_CMD,
         mc.BASE_TOPIC_CMD_ACK,
         mc.BASE_TOPIC_NOTIFICATION,
     ],

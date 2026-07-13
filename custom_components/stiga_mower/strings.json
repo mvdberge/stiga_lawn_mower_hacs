@@ -61,6 +61,7 @@
   },
   "entity": {
     "sensor": {
+      "active_error":        { "name": "Active error" },
       "battery_capacity":    { "name": "Battery Capacity" },
       "battery_current":     { "name": "Battery Current" },
       "battery_cycles":      { "name": "Battery Cycles" },

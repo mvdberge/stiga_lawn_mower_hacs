@@ -1,0 +1,44 @@
+{
+  "entity": {
+    "calendar": {
+      "mowing_schedule": { "default": "mdi:robot-mower" }
+    },
+    "button": {
+      "calibrate_blades": { "default": "mdi:tune" },
+      "reset_error": { "default": "mdi:alert-circle-check-outline" }
+    },
+    "number": {
+      "cutting_height": { "default": "mdi:arrow-up-down" }
+    },
+    "select": {
+      "rain_sensor_delay": { "default": "mdi:weather-rainy" },
+      "schedule_mode": { "default": "mdi:calendar-clock" }
+    },
+    "switch": {
+      "rain_sensor_enabled": { "default": "mdi:weather-rainy" },
+      "anti_theft": { "default": "mdi:shield-lock" },
+      "sleep_mode": { "default": "mdi:power-sleep" },
+      "push_notifications": { "default": "mdi:bell" },
+      "obstacle_notifications": { "default": "mdi:bell-alert" },
+      "smart_cutting_height": { "default": "mdi:ruler" },
+      "long_exit": { "default": "mdi:exit-run" }
+    },
+    "sensor": {
+      "current_zone": { "default": "mdi:map-marker" },
+      "zone_count": { "default": "mdi:select-group" },
+      "zone_area": { "default": "mdi:texture-box" },
+      "garden_area": { "default": "mdi:texture-box" },
+      "obstacle_count": { "default": "mdi:traffic-cone" },
+      "obstacle_area": { "default": "mdi:traffic-cone" },
+      "zone_completed_pct": { "default": "mdi:progress-check" },
+      "garden_completed_pct": { "default": "mdi:progress-check" },
+      "satellites": { "default": "mdi:satellite-variant" },
+      "gps_quality": { "default": "mdi:crosshairs-gps" },
+      "rtk_quality_pct": { "default": "mdi:crosshairs-gps" },
+      "signal_quality_pct": { "default": "mdi:signal" },
+      "rsrp": { "default": "mdi:signal" },
+      "rsrq": { "default": "mdi:signal" },
+      "dock_firmware": { "default": "mdi:chip" }
+    }
+  }
+}

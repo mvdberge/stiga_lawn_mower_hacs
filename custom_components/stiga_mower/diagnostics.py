@@ -16,8 +16,8 @@ REDACT_DEVICE_FIELDS = {"serial_number", "uuid", "name"}
 REDACT_BASE_FIELDS = {"serial_number", "uuid", "mac_address"}
 
 
-def _redact_devices(devices: list[dict]) -> list[dict]:
-    redacted: list[dict] = []
+def _redact_devices(devices: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    redacted: list[dict[str, Any]] = []
     for device in devices:
         attrs = dict(device.get("attributes") or {})
         for field in REDACT_DEVICE_FIELDS:
@@ -27,9 +27,9 @@ def _redact_devices(devices: list[dict]) -> list[dict]:
     return redacted
 
 
-def _redact_bases(bases: list[dict]) -> list[dict]:
+def _redact_bases(bases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Redact PII-like fields on base-station records (REST snapshot)."""
-    redacted: list[dict] = []
+    redacted: list[dict[str, Any]] = []
     for base in bases:
         copy = dict(base)
         for field in REDACT_BASE_FIELDS:

@@ -7,6 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import StigaAPI, StigaApiError, StigaAuthError
@@ -35,7 +36,9 @@ STEP_RECONFIGURE_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def _validate_credentials(hass, email: str, password: str) -> tuple[str | None, bool]:
+async def _validate_credentials(
+    hass: HomeAssistant, email: str, password: str
+) -> tuple[str | None, bool]:
     """Return (error_key, has_devices). error_key is None on success."""
     session = async_get_clientsession(hass)
     api = StigaAPI(email=email, password=password, session=session)

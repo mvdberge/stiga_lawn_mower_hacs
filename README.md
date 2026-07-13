@@ -190,6 +190,12 @@ automation:
 - **Mower position** — GPS is surfaced as signal/satellite diagnostics, not as a live map location.
 - **Base station** — RTK base-station status is received but not yet exposed as entities.
 - **Classic A-Series (no camera)** — expected to work but less tested; please report issues.
+- **MQTT server-certificate verification is disabled** — the STIGA broker presents a self-signed
+  certificate that is not chained to any public root and is not published anywhere pinnable, so the
+  connection cannot validate the server. It is still mutually authenticated by the bundled client
+  certificate (mTLS); the residual risk is an on-path attacker on your network path to the STIGA
+  cloud. This mirrors the official app's behaviour and will be revisited if STIGA publishes a
+  pinnable broker certificate.
 
 ---
 

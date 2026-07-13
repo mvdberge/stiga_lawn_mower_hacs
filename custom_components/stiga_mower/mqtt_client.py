@@ -330,10 +330,13 @@ class StigaMQTT:
         """Build the mTLS context. Runs on the executor — sync I/O."""
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         ctx.load_cert_chain(certfile=self._cert_path, keyfile=self._key_path)
-        # Match matthewgream's `rejectUnauthorized: false`. STIGA's broker
-        # presents a self-signed cert (not chained to any public root) so
-        # we cannot validate it; refusing the connection would simply
-        # break the integration.
+        # KNOWN LIMITATION: server-certificate verification is disabled. STIGA's
+        # broker presents a self-signed certificate that is not chained to any
+        # public root and is not published anywhere we can pin against, so
+        # enabling CERT_REQUIRED would break the connection for every user. The
+        # connection is still mutually authenticated by the client certificate
+        # loaded above; the residual exposure is an on-path MITM, documented in
+        # the README. Revisit if STIGA ever publishes a pinnable broker cert.
         ctx.check_hostname = False
         ctx.verify_mode = ssl.CERT_NONE
         return ctx

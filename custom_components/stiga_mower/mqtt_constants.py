@@ -24,11 +24,6 @@ MQTT_BROKER_USERNAME = "firebaseauth|connectivity-production.stiga.com"
 MQTT_CERT_FILE = "stiga.crt"
 MQTT_KEY_FILE = "stiga.key"
 
-# matthewgream uses `rejectUnauthorized: false`; we mirror this with
-# `CERT_NONE` + `check_hostname=False`. The broker presents a self-signed
-# cert that is not chained to any public root.
-MQTT_VERIFY_SERVER_CERT = False
-
 MQTT_KEEPALIVE = 60  # seconds
 MQTT_RECONNECT_DELAY = 5  # seconds initial delay; doubles on each consecutive failure
 MQTT_RECONNECT_DELAY_MAX = 300  # seconds cap (5 minutes)

@@ -199,11 +199,13 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         suggested_display_precision=0,
     ),
     # ---- MQTT live sensors — only populated when MQTT is connected ----
+    # current_zone is a categorical zone identifier, not a continuous
+    # quantity: no state_class, so HA does not compute long-term statistics
+    # (min/max/mean) over meaningless zone IDs.
     StigaSensorDescription(
         key="current_zone",
         status_key="current_zone",
         translation_key="current_zone",
-        state_class=SensorStateClass.MEASUREMENT,
     ),
     StigaSensorDescription(
         key="zone_completed_pct",
@@ -343,7 +345,11 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         if not data:
             return False
         if self.entity_description.source == "meta":
-            return self._uuid in data.get("meta", {})
+            # A meta entry existing does not guarantee this specific field was
+            # populated: require the sensor's own status_key to be present and
+            # non-None so we never report available while native_value is None.
+            meta = data.get("meta", {}).get(self._uuid, {})
+            return meta.get(self.entity_description.status_key) is not None
         status = data.get("statuses", {}).get(self._uuid)
         if not status:
             return False

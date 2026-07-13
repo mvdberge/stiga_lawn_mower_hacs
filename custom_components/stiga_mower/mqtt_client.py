@@ -25,6 +25,7 @@ import asyncio
 import contextlib
 import logging
 import ssl
+import time
 import uuid
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -91,6 +92,10 @@ class StigaMQTT:
         self._stop_event = asyncio.Event()
         self._client: aiomqtt.Client | None = None
         self._connected = False
+        # Monotonic timestamp of the moment the current session became
+        # connected, or None while no session is up. Used by `_run_loop` to
+        # tell a long-lived-then-dropped session apart from a reconnect storm.
+        self._connected_since: float | None = None
 
     # -------------------------------------------------------------- Setup
 
@@ -168,11 +173,19 @@ class StigaMQTT:
 
         Uses exponential backoff on consecutive failures so a persistent broker
         outage does not result in a tight reconnect storm. Delay resets to the
-        base value after a successful session.
+        base value after a successful session — either a clean token-refresh
+        cycle or any session that stayed connected long enough to be considered
+        healthy before dropping.
         """
         delay = mc.MQTT_RECONNECT_DELAY
+        # A session that stayed connected at least this long is treated as
+        # healthy: its drop is a fresh fault rather than a continuation of a
+        # reconnect storm, so the backoff resets to the base delay even when
+        # the session ended via an exception (e.g. broker drops after 40 min).
+        long_session_s = max(60, mc.MQTT_RECONNECT_DELAY * 2)
         while not self._stop_event.is_set():
             clean_refresh = False
+            self._connected_since = None
             try:
                 clean_refresh = await self._connect_session()
                 # Session ended cleanly (token refresh) — reset backoff.
@@ -188,6 +201,15 @@ class StigaMQTT:
             except Exception:
                 _LOGGER.exception("Unexpected MQTT loop error")
             finally:
+                # A session that stayed up long enough before dropping is not
+                # part of a reconnect storm — reset the backoff so a broker
+                # that connects fine but drops after a while does not keep
+                # doubling the delay toward MQTT_RECONNECT_DELAY_MAX.
+                if (
+                    self._connected_since is not None
+                    and time.monotonic() - self._connected_since >= long_session_s
+                ):
+                    delay = mc.MQTT_RECONNECT_DELAY
                 # Only announce a disconnect for *unplanned* drops. A planned
                 # token-refresh cycle reconnects immediately in the next loop
                 # iteration, so flipping `mqtt_connected` to False here would
@@ -236,11 +258,19 @@ class StigaMQTT:
         ) as client:
             self._client = client
             self._set_connected(True)
+            # Record when this session became connected so `_run_loop` can
+            # reset the reconnect backoff after a long-lived session drops.
+            self._connected_since = time.monotonic()
             poll_task: asyncio.Task[None] | None = None
             try:
                 for topic in self._subscriptions():
-                    await client.subscribe(topic, qos=0)
-                    _LOGGER.debug("Subscribed: %s", topic)
+                    # LOG topics carry the polled SETTINGS/SCHEDULING/STATUS
+                    # response frames; those are never re-requested on loss, so
+                    # subscribe at QoS 1 to have the broker redeliver a dropped
+                    # frame. Command-ack and notification topics stay at QoS 0.
+                    qos = 1 if "/LOG/" in topic else 0
+                    await client.subscribe(topic, qos=qos)
+                    _LOGGER.debug("Subscribed: %s (qos=%d)", topic, qos)
 
                 # STIGA robots do not push status frames — they must be polled.
                 # Send an immediate request, then keep a background task polling

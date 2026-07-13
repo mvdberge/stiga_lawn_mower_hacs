@@ -40,89 +40,99 @@ def decode_status(payload: bytes) -> dict[str, Any]:
         return {}
 
     out: dict[str, Any] = {}
-    _set_if_present(out, "status_valid", raw, 1, _as_bool)
-    _set_if_present(out, "operable", raw, 2, _as_bool)
-    _set_if_present(out, "status_type", raw, 3, lambda v: mc.ROBOT_STATUS_TYPES.get(v, v))
+    # The post-decode transforms below assume each field arrived with the
+    # expected wire type. A field carrying an unexpected shape (e.g. a repeated
+    # value decoded to a list, or a submsg where a scalar was expected) would
+    # otherwise raise here and — since decode runs inside MQTT dispatch — tear
+    # down the whole session. Guard the transforms so a malformed field leaves
+    # a partial dict (keys parsed so far) rather than raising, honouring the
+    # module docstring's "missing/malformed → key absent" contract.
+    try:
+        _set_if_present(out, "status_valid", raw, 1, _as_bool)
+        _set_if_present(out, "operable", raw, 2, _as_bool)
+        _set_if_present(out, "status_type", raw, 3, lambda v: mc.ROBOT_STATUS_TYPES.get(v, v))
 
-    if isinstance(error := raw.get(4), dict):
-        _set_if_present(out, "error_code1", error, 1)
-        _set_if_present(out, "error_code2", error, 2)
+        if isinstance(error := raw.get(4), dict):
+            _set_if_present(out, "error_code1", error, 1)
+            _set_if_present(out, "error_code2", error, 2)
 
-    info = raw.get(10) if isinstance(raw.get(10), dict) else None
-    if info is not None and (code := info.get(1)) is not None:
-        out["info_code"] = code
-        out["info_label"] = mc.ROBOT_STATUS_INFO_CODES.get(code)
-        if (sensor := mc.ROBOT_INFO_CODE_TO_SENSOR.get(code)) is not None:
-            out["info_sensor"] = sensor
+        info = raw.get(10) if isinstance(raw.get(10), dict) else None
+        if info is not None and (code := info.get(1)) is not None:
+            out["info_code"] = code
+            out["info_label"] = mc.ROBOT_STATUS_INFO_CODES.get(code)
+            if (sensor := mc.ROBOT_INFO_CODE_TO_SENSOR.get(code)) is not None:
+                out["info_sensor"] = sensor
 
-    _set_if_present(out, "docking", raw, 13, _as_bool)
+        _set_if_present(out, "docking", raw, 13, _as_bool)
 
-    if isinstance(battery := raw.get(17), dict):
-        _set_if_present(out, "battery_capacity_mah", battery, 1)
-        _set_if_present(out, "battery_level", battery, 2)
-        # 17.7 = battery temperature °C (float), 17.12 = battery current A
-        # (negative = discharging). Field 17.9 is a float (e.g. 4645.5) that
-        # tracks closely with REST `remainingCapacity` (mAh) and changes with
-        # battery state — surface it as the live `battery_remaining` value.
-        # (Until 2.2.3 this was misread as "total work time"; matthewgream's
-        # decoder does not label it, so the previous guess was unfounded.)
-        if (temp := battery.get(7)) is not None and isinstance(temp, float):
-            out["battery_temp_c"] = round(temp, 1)
-        if (rem := battery.get(9)) is not None:
-            out["battery_remaining"] = int(rem) if isinstance(rem, float) else rem
-        if (current := battery.get(12)) is not None and isinstance(current, float):
-            out["battery_current"] = round(current, 3)
+        if isinstance(battery := raw.get(17), dict):
+            _set_if_present(out, "battery_capacity_mah", battery, 1)
+            _set_if_present(out, "battery_level", battery, 2)
+            # 17.7 = battery temperature °C (float), 17.12 = battery current A
+            # (negative = discharging). Field 17.9 is a float (e.g. 4645.5) that
+            # tracks closely with REST `remainingCapacity` (mAh) and changes with
+            # battery state — surface it as the live `battery_remaining` value.
+            # (Until 2.2.3 this was misread as "total work time"; matthewgream's
+            # decoder does not label it, so the previous guess was unfounded.)
+            if (temp := battery.get(7)) is not None and isinstance(temp, float):
+                out["battery_temp_c"] = round(temp, 1)
+            if (rem := battery.get(9)) is not None:
+                out["battery_remaining"] = int(rem) if isinstance(rem, float) else rem
+            if (current := battery.get(12)) is not None and isinstance(current, float):
+                out["battery_current"] = round(current, 3)
 
-    if isinstance(mowing := raw.get(18), dict):
-        # The mowing sub-message uses proto3 encoding: scalar fields at their
-        # wire default (varint 0) are omitted. Once the sub-message itself is
-        # present the mower is reporting mowing telemetry, so an absent inner
-        # field means "0", not "unknown". Without this default the progress
-        # sensors flicker to ``unavailable`` at the start of a cycle (zone 0,
-        # 0 % completed) — they share the same root cause as the rain-delay
-        # select fix.
-        out["current_zone"] = mowing.get(1, 0)
-        out["zone_completed_pct"] = mowing.get(2, 0)
-        out["garden_completed_pct"] = mowing.get(3, 0)
-        # 18.4 = battery detail sub-message: {1: unknown counter, 2: voltage V, 3: unknown flag}
-        if (
-            isinstance(batt_detail := mowing.get(4), dict)
-            and (voltage := batt_detail.get(2)) is not None
-            and isinstance(voltage, float)
-        ):
-            out["battery_voltage"] = round(voltage, 2)
+        if isinstance(mowing := raw.get(18), dict):
+            # The mowing sub-message uses proto3 encoding: scalar fields at their
+            # wire default (varint 0) are omitted. Once the sub-message itself is
+            # present the mower is reporting mowing telemetry, so an absent inner
+            # field means "0", not "unknown". Without this default the progress
+            # sensors flicker to ``unavailable`` at the start of a cycle (zone 0,
+            # 0 % completed) — they share the same root cause as the rain-delay
+            # select fix.
+            out["current_zone"] = mowing.get(1, 0)
+            out["zone_completed_pct"] = mowing.get(2, 0)
+            out["garden_completed_pct"] = mowing.get(3, 0)
+            # 18.4 = battery detail sub-message: {1: unknown counter, 2: voltage V, 3: unknown flag}
+            if (
+                isinstance(batt_detail := mowing.get(4), dict)
+                and (voltage := batt_detail.get(2)) is not None
+                and isinstance(voltage, float)
+            ):
+                out["battery_voltage"] = round(voltage, 2)
 
-    if isinstance(location := raw.get(19), dict):
-        # 19.1 = gps_quality enum (absent = implicitly GOOD on this firmware)
-        _set_if_present(
-            out,
-            "gps_quality",
-            location,
-            1,
-            lambda v: mc.ROBOT_GPS_QUALITY.get(v, v),
-        )
-        _set_if_present(out, "satellites", location, 2)
-        # 19.3 and 19.4 are accuracy/dilution metrics, NOT position offsets.
-        # 19.5 = RTK quality % (Survey-In progress, 0–100)
-        _set_if_present(out, "rtk_quality_pct", location, 5)
-        # 19.6 = RTK fix type (4 = RTK fixed)
-        _set_if_present(out, "rtk_fix_type", location, 6)
+        if isinstance(location := raw.get(19), dict):
+            # 19.1 = gps_quality enum (absent = implicitly GOOD on this firmware)
+            _set_if_present(
+                out,
+                "gps_quality",
+                location,
+                1,
+                lambda v: mc.ROBOT_GPS_QUALITY.get(v, v),
+            )
+            _set_if_present(out, "satellites", location, 2)
+            # 19.3 and 19.4 are accuracy/dilution metrics, NOT position offsets.
+            # 19.5 = RTK quality % (Survey-In progress, 0–100)
+            _set_if_present(out, "rtk_quality_pct", location, 5)
+            # 19.6 = RTK fix type (4 = RTK fixed)
+            _set_if_present(out, "rtk_fix_type", location, 6)
 
-    network = raw.get(20)
-    if isinstance(network, dict) and isinstance(network.get(3), dict):
-        sub = network[3]
-        _set_if_present(out, "network_kind", sub, 4)
-        _set_if_present(out, "network_type", sub, 5)
-        _set_if_present(out, "network_band", sub, 6)
-        # 20.3.10 = rsrp, 20.3.11 = signal_quality_pct (-32768 = modem sentinel
-        # for unavailable), 20.3.12 = rsrq. Field 20.3.7 is RSSI per
-        # matthewgream/stiga-api but reports implausible values on this
-        # firmware, so it is not surfaced.
-        _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
-        sq = _as_signed_int32(sub[11]) if 11 in sub else None
-        if sq is not None and sq != -32768:
-            out["signal_quality_pct"] = sq
-        _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
+        network = raw.get(20)
+        if isinstance(network, dict) and isinstance(network.get(3), dict):
+            sub = network[3]
+            _set_if_present(out, "network_kind", sub, 4)
+            _set_if_present(out, "network_type", sub, 5)
+            _set_if_present(out, "network_band", sub, 6)
+            # 20.3.10 = rsrp, 20.3.11 = signal_quality_pct (-32768 = modem sentinel
+            # for unavailable), 20.3.12 = rsrq. Field 20.3.7 is RSSI per
+            # matthewgream/stiga-api but reports implausible values on this
+            # firmware, so it is not surfaced.
+            _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
+            sq = _as_signed_int32(sub[11]) if 11 in sub else None
+            if sq is not None and sq != -32768:
+                out["signal_quality_pct"] = sq
+            _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
+    except Exception as err:
+        _LOGGER.warning("STATUS frame field transform failed: %s", err)
 
     return out
 
@@ -369,59 +379,65 @@ def decode_base_status(payload: bytes) -> dict[str, Any]:
         return {}
 
     out: dict[str, Any] = {}
-    _set_if_present(
-        out,
-        "status_type",
-        raw,
-        1,
-        lambda v: mc.BASE_STATUS_TYPES.get(v, v),
-    )
-    _set_if_present(
-        out,
-        "status_flag",
-        raw,
-        4,
-        lambda v: mc.BASE_STATUS_FLAGS.get(v, v),
-    )
-    _set_if_present(
-        out,
-        "led_mode",
-        raw,
-        10,
-        lambda v: mc.BASE_LED_MODE_INDEX_TO_NAME.get(v, v),
-    )
-
-    # field 8 — location sub-message. Same shape as `decodeLocationStatus`
-    # in matthewgream's lib. Fields 3/4 are FIXED64 lat/lon offsets relative
-    # to a reference position we do not have, so they are intentionally
-    # omitted; we surface only the values that are useful standalone.
-    if isinstance(location := raw.get(8), dict):
+    # See decode_status: guard the field transforms so a field with an
+    # unexpected wire type yields a partial dict instead of raising and tearing
+    # down the MQTT dispatch loop.
+    try:
         _set_if_present(
             out,
-            "gps_quality",
-            location,
+            "status_type",
+            raw,
             1,
-            lambda v: mc.ROBOT_GPS_QUALITY.get(v, v),
+            lambda v: mc.BASE_STATUS_TYPES.get(v, v),
         )
-        _set_if_present(out, "satellites", location, 2)
-        _set_if_present(out, "rtk_quality_pct", location, 5)
+        _set_if_present(
+            out,
+            "status_flag",
+            raw,
+            4,
+            lambda v: mc.BASE_STATUS_FLAGS.get(v, v),
+        )
+        _set_if_present(
+            out,
+            "led_mode",
+            raw,
+            10,
+            lambda v: mc.BASE_LED_MODE_INDEX_TO_NAME.get(v, v),
+        )
 
-    # field 9 — network sub-message. Inner data lives at .3 (same wrap as
-    # the robot's field 20).
-    network = raw.get(9)
-    if isinstance(network, dict) and isinstance(network.get(3), dict):
-        sub = network[3]
-        _set_if_present(out, "network_kind", sub, 4)
-        _set_if_present(out, "network_type", sub, 5)
-        _set_if_present(out, "network_band", sub, 6)
-        # 9.3.7 = RSSI dBm (signed int32). Unlike the robot, the base
-        # reports a plausible RSSI here so we surface it.
-        _set_if_present(out, "rssi", sub, 7, _as_signed_int32)
-        _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
-        sq = _as_signed_int32(sub[11]) if 11 in sub else None
-        if sq is not None and sq != -32768:
-            out["signal_quality_pct"] = sq
-        _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
+        # field 8 — location sub-message. Same shape as `decodeLocationStatus`
+        # in matthewgream's lib. Fields 3/4 are FIXED64 lat/lon offsets relative
+        # to a reference position we do not have, so they are intentionally
+        # omitted; we surface only the values that are useful standalone.
+        if isinstance(location := raw.get(8), dict):
+            _set_if_present(
+                out,
+                "gps_quality",
+                location,
+                1,
+                lambda v: mc.ROBOT_GPS_QUALITY.get(v, v),
+            )
+            _set_if_present(out, "satellites", location, 2)
+            _set_if_present(out, "rtk_quality_pct", location, 5)
+
+        # field 9 — network sub-message. Inner data lives at .3 (same wrap as
+        # the robot's field 20).
+        network = raw.get(9)
+        if isinstance(network, dict) and isinstance(network.get(3), dict):
+            sub = network[3]
+            _set_if_present(out, "network_kind", sub, 4)
+            _set_if_present(out, "network_type", sub, 5)
+            _set_if_present(out, "network_band", sub, 6)
+            # 9.3.7 = RSSI dBm (signed int32). Unlike the robot, the base
+            # reports a plausible RSSI here so we surface it.
+            _set_if_present(out, "rssi", sub, 7, _as_signed_int32)
+            _set_if_present(out, "rsrp", sub, 10, _as_signed_int32)
+            sq = _as_signed_int32(sub[11]) if 11 in sub else None
+            if sq is not None and sq != -32768:
+                out["signal_quality_pct"] = sq
+            _set_if_present(out, "rsrq", sub, 12, _as_signed_int32)
+    except Exception as err:
+        _LOGGER.warning("BASE STATUS frame field transform failed: %s", err)
 
     return out
 

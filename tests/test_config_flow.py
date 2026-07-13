@@ -107,6 +107,37 @@ async def test_user_flow_already_configured(hass) -> None:
     assert result["reason"] == "already_configured"
 
 
+@pytest.mark.asyncio
+async def test_user_flow_whitespace_padded_already_configured(hass) -> None:
+    """A padded/mixed-case variant of an existing email must still abort."""
+    _entry().add_to_hass(hass)
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    with _patch_api():
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_EMAIL: f"  {TEST_EMAIL.upper()}  ", CONF_PASSWORD: TEST_PASSWORD},
+        )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+
+
+@pytest.mark.asyncio
+async def test_user_flow_normalizes_stored_email(hass) -> None:
+    """The created entry stores the stripped, lowercased email."""
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": SOURCE_USER})
+    with _patch_api(), _patch_setup():
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            {CONF_EMAIL: f"  {TEST_EMAIL.upper()}  ", CONF_PASSWORD: TEST_PASSWORD},
+        )
+        await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert result["title"] == TEST_EMAIL
+    assert result["data"][CONF_EMAIL] == TEST_EMAIL
+    assert result["result"].unique_id == TEST_EMAIL
+
+
 # ---------------------------------------------------------------- reauth
 
 

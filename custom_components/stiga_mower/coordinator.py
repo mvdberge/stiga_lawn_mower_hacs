@@ -312,10 +312,13 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if merged and merged.get("has_data") is not False:
                 self._last_has_data[uuid] = dt_util.utcnow()
 
+        # Return shallow copies of the live buckets so background refreshers
+        # (_refresh_meta, get_devices) mutating self._meta / self._devices in
+        # place do not change a snapshot already handed to consumers.
         return {
-            "devices": self._devices,
+            "devices": list(self._devices),
             "statuses": statuses,
-            "meta": self._meta,
+            "meta": dict(self._meta),
             "mqtt_connected": self._mqtt_connected,
             "live_settings": dict(self._live_settings),
             "live_schedule": dict(self._live_schedule),

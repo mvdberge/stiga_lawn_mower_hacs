@@ -193,34 +193,54 @@ class StigaAPI:
         if not self._token:
             await self.authenticate()
         timeout = aiohttp.ClientTimeout(total=REQUEST_TIMEOUT)
-        try:
-            async with self._session.post(
-                f"{STIGA_BASE_URL}{path}",
-                headers=self._auth_header(),
-                json=body,
-                timeout=timeout,
-            ) as resp:
-                if resp.status == 401 and retry:
-                    await self.authenticate()
-                    return await self._post(path, body, retry=False)
-                if resp.status not in (200, 204):
-                    raise StigaApiError(f"POST {path} → HTTP {resp.status}")
-                if resp.status == 204 or not resp.content_length:
-                    return None
-                try:
-                    return await resp.json()
-                except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
-                    _LOGGER.warning(
-                        "POST %s returned non-JSON body (HTTP %d): %s",
-                        path,
-                        resp.status,
-                        err,
-                    )
-                    return None
-        except aiohttp.ClientError as err:
-            raise StigaApiError(f"Network error: {err}") from err
-        except TimeoutError as err:
-            raise StigaApiError(f"Timeout on POST {path} (>{REQUEST_TIMEOUT}s)") from err
+        last_err: StigaApiError | None = None
+        for attempt in range(REQUEST_RETRIES + 1):
+            try:
+                async with self._session.post(
+                    f"{STIGA_BASE_URL}{path}",
+                    headers=self._auth_header(),
+                    json=body,
+                    timeout=timeout,
+                ) as resp:
+                    if resp.status == 401 and retry:
+                        await self.authenticate()
+                        return await self._post(path, body, retry=False)
+                    # 5xx are transient cloud-side hiccups; retry before giving
+                    # up. 4xx are caller errors and surface immediately. The
+                    # start/end-session commands are idempotent, so replaying a
+                    # POST after a transient failure is safe.
+                    if resp.status >= 500:
+                        last_err = StigaApiError(f"POST {path} → HTTP {resp.status}")
+                    elif resp.status not in (200, 204):
+                        raise StigaApiError(f"POST {path} → HTTP {resp.status}")
+                    elif resp.status == 204 or not resp.content_length:
+                        return None
+                    else:
+                        try:
+                            return await resp.json()
+                        except (json.JSONDecodeError, aiohttp.ContentTypeError) as err:
+                            _LOGGER.warning(
+                                "POST %s returned non-JSON body (HTTP %d): %s",
+                                path,
+                                resp.status,
+                                err,
+                            )
+                            return None
+            except aiohttp.ClientError as err:
+                # Connection-level drops (ServerDisconnectedError, ClientOSError,
+                # ConnectionResetError…) are the "connection broke" symptom; a
+                # quick retry usually rides over them.
+                last_err = StigaApiError(f"Network error: {err}")
+            except TimeoutError as err:
+                # A timeout already consumed REQUEST_TIMEOUT seconds; retrying
+                # risks blowing the coordinator's per-cycle budget.
+                raise StigaApiError(f"Timeout on POST {path} (>{REQUEST_TIMEOUT}s)") from err
+
+            if attempt < REQUEST_RETRIES:
+                await asyncio.sleep(RETRY_BACKOFF * (attempt + 1))
+                _LOGGER.debug("Retrying POST %s (attempt %d): %s", path, attempt + 2, last_err)
+
+        raise last_err or StigaApiError(f"POST {path} failed after {REQUEST_RETRIES + 1} attempts")
 
     # ------------------------------------------------------------------ Devices
 

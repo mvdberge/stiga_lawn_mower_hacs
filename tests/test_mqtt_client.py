@@ -385,6 +385,73 @@ async def test_connect_session_requests_settings_and_schedule(
     assert schedule_payload in published_payloads, "SCHEDULING_SETTINGS_REQUEST not sent at connect"
 
 
+async def test_connect_session_subscribes_log_topics_at_qos1(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    """LOG topics carry the polled SETTINGS/SCHEDULING/STATUS response frames,
+    which are never re-requested on loss — they must subscribe at QoS 1 so the
+    broker redelivers a dropped frame. Command-ack and notification topics stay
+    at QoS 0.
+    """
+    fake_client = _FakeAiomqttClient([])
+    with patch.object(mc_mod.aiomqtt, "Client", return_value=fake_client):
+        await client._connect_session()
+
+    qos_by_topic = {
+        call.args[0]: call.kwargs["qos"] for call in fake_client.subscribe.await_args_list
+    }
+    assert qos_by_topic[f"{ROBOT_MAC}/LOG/+"] == 1
+    assert qos_by_topic[f"{BASE_MAC}/LOG/+"] == 1
+    assert qos_by_topic[f"CMD_ROBOT_ACK/{ROBOT_MAC}"] == 0
+    assert qos_by_topic[f"CMD_REFERENCE_ACK/{BASE_MAC}"] == 0
+    assert qos_by_topic[f"{ROBOT_MAC}/JSON_NOTIFICATION"] == 0
+
+
+async def test_run_loop_resets_backoff_after_long_lived_session(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    """A session that stayed connected past the long-session threshold and then
+    dropped must reset the reconnect backoff, instead of continuing to double it
+    toward the cap as if it were another consecutive failure.
+    """
+    delays_seen: list[float] = []
+    call_count = {"n": 0}
+
+    async def fake_session() -> bool:
+        n = call_count["n"]
+        call_count["n"] += 1
+        if n < 2:
+            # Never became connected — a genuine consecutive failure that must
+            # grow the backoff.
+            raise mc_mod.aiomqtt.MqttError("connect failed")
+        if n == 2:
+            # Stayed connected well past the long-session threshold, then dropped.
+            client._connected_since = mc_mod.time.monotonic() - 3600
+            raise mc_mod.aiomqtt.MqttError("dropped after long uptime")
+        # Stop the loop on the next iteration.
+        client._stop_event.set()
+        return False
+
+    async def fake_wait_for(coro: object, timeout: float) -> None:
+        delays_seen.append(timeout)
+        coro.close()  # type: ignore[attr-defined]
+        raise TimeoutError
+
+    with (
+        patch.object(client, "_connect_session", side_effect=fake_session),
+        patch.object(mc_mod.asyncio, "wait_for", fake_wait_for),
+    ):
+        await client._run_loop()
+
+    # Two real failures double the delay (5 → 10); the long-lived session's drop
+    # resets it to the base value instead of continuing to 20.
+    assert delays_seen == [
+        mc.MQTT_RECONNECT_DELAY,
+        mc.MQTT_RECONNECT_DELAY * 2,
+        mc.MQTT_RECONNECT_DELAY,
+    ]
+
+
 async def test_run_loop_clean_refresh_does_not_announce_disconnect(
     client: mc_mod.StigaMQTT,
 ) -> None:

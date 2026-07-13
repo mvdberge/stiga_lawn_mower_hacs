@@ -158,6 +158,21 @@ def test_decode_status_malformed_does_not_raise() -> None:
     assert mm.decode_status(b"\x80") == {}
 
 
+def test_decode_status_repeated_field_does_not_raise() -> None:
+    """A numeric status field arriving as a repeated value (decoded to a list)
+    must not raise out of the post-decode transforms — decode runs inside MQTT
+    dispatch, so a raise would tear down the whole session. The malformed key
+    is dropped; keys parsed before it survive as a partial dict.
+    """
+    # Field 3 (status_type) emitted twice → decoder collapses it to [4, 5],
+    # which is unhashable and would crash the enum lookup without the guard.
+    payload = pb.encode({1: 1, 3: [4, 5]})
+    out = mm.decode_status(payload)
+    assert isinstance(out, dict)
+    assert out["status_valid"] is True  # parsed before the malformed field
+    assert "status_type" not in out
+
+
 # ---------------------------------------------------------------- decode_settings
 
 
@@ -457,6 +472,18 @@ def test_decode_base_status_signal_quality_sentinel_dropped() -> None:
 
 def test_decode_base_status_empty_payload() -> None:
     assert mm.decode_base_status(b"") == {}
+
+
+def test_decode_base_status_repeated_field_does_not_raise() -> None:
+    """Same guard as decode_status: a base-status field with an unexpected wire
+    type (here field 10 / led_mode arriving repeated) must not raise; earlier
+    valid fields survive as a partial dict.
+    """
+    payload = pb.encode({1: 5, 10: [1, 2]})  # status_type valid, led_mode repeated
+    out = mm.decode_base_status(payload)
+    assert isinstance(out, dict)
+    assert out["status_type"] == "PUBLISHING_CORRECTIONS"
+    assert "led_mode" not in out
 
 
 # ---------------------------------------------------------------- decode_base_version

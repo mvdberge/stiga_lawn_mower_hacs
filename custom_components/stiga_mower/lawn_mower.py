@@ -65,6 +65,7 @@ _CURRENT_ACTION: dict[str, tuple[LawnMowerActivity, str]] = {
     "BACK_HOME": (_RETURNING, "Returning to dock"),
     "BACK_HOME_MANUAL": (_RETURNING, "Returning to dock"),
     # Docked
+    "DOCKED": (LawnMowerActivity.DOCKED, "Docked"),
     "AT_HOME": (LawnMowerActivity.DOCKED, "At home"),
     "CHARGING": (LawnMowerActivity.DOCKED, "Charging"),
     "UPDATING": (LawnMowerActivity.DOCKED, "Updating firmware"),
@@ -132,15 +133,17 @@ MOWING_MODE_LABELS: dict[Any, str] = {
     "UPDATING": "Updating",
     "ERROR": "Error",
     "LOCKED": "Locked",
+    # Labels must stay consistent with MOWING_MODE_TO_ACTIVITY: the activity
+    # drives the entity state, so each code's label describes that same meaning.
     1: "Mowing",
-    2: "Returning",
+    2: "Paused",
     3: "Paused",
     4: "Error",
     5: "Sleeping/Charging",
     6: "Locked",
     7: "Border mowing",
-    8: "Scheduled",
-    0: "Unknown",
+    8: "Docked",
+    0: "Docked",
 }
 
 
@@ -257,10 +260,12 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
         # currentAction reflects what the robot is doing right now.
         action = s.get("current_action")
+        action_is_unknown_str = False
         if isinstance(action, str):
             entry = _CURRENT_ACTION.get(action.upper())
             if entry is not None:
                 return entry[0]
+            action_is_unknown_str = True
 
         # Fall back to mowingMode (describes how the session was started).
         mode = s.get("mowing_mode")
@@ -270,13 +275,19 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
                 activity = MOWING_MODE_TO_ACTIVITY.get(mode.upper())
             if activity is not None:
                 return activity
-            mode_key = mode.upper() if isinstance(mode, str) else mode
-            if mode_key not in _AMBIGUOUS_MODES:
-                _LOGGER.warning(
-                    "Unknown mowingMode %r / currentAction %r – please report as a GitHub issue",
-                    mode,
-                    action,
-                )
+
+        # Reached the fallback: neither currentAction nor mowingMode resolved.
+        # Surface anything the maintainer should know about — an unrecognised
+        # currentAction string (possibly a new firmware state) or an unknown,
+        # non-ambiguous mowingMode. Ambiguous modes (SCHEDULED/IDLE) stay quiet.
+        mode_key = mode.upper() if isinstance(mode, str) else mode
+        mode_is_unknown = mode is not None and mode_key not in _AMBIGUOUS_MODES
+        if action_is_unknown_str or mode_is_unknown:
+            _LOGGER.warning(
+                "Unknown mowingMode %r / currentAction %r – please report as a GitHub issue",
+                mode,
+                action,
+            )
 
         # No currentAction, no confirming isDocked, and mowingMode is either
         # missing or ambiguous (e.g. SCHEDULED while stopped outside). Report

@@ -242,6 +242,83 @@ async def test_get_wraps_malformed_json_body() -> None:
     assert session.get.call_count == 3
 
 
+# ---------------------------------------------------------------- _post retry logic
+
+
+def _mock_session_post_sequence(items: list) -> MagicMock:
+    """Session whose .post yields one item per call: a response or an exception.
+
+    Mirrors ``_mock_session_get_sequence`` for the POST path: a response item is
+    returned from __aenter__; an Exception item is raised from __aenter__.
+    """
+    session = MagicMock()
+    calls = iter(items)
+
+    def _next_ctx(*_args, **_kwargs):
+        item = next(calls)
+        ctx = MagicMock()
+        if isinstance(item, BaseException):
+            ctx.__aenter__ = AsyncMock(side_effect=item)
+        else:
+            ctx.__aenter__ = AsyncMock(return_value=item)
+        ctx.__aexit__ = AsyncMock(return_value=False)
+        return ctx
+
+    session.post = MagicMock(side_effect=_next_ctx)
+    return session
+
+
+async def test_post_retries_then_succeeds_on_connection_drop() -> None:
+    """A dropped connection is retried and the next good response wins."""
+    session = _mock_session_post_sequence(
+        [aiohttp.ServerDisconnectedError(), _resp(200, {"data": 1})]
+    )
+    api = _build_api(session)
+    assert await api._post("/x") == {"data": 1}
+    assert session.post.call_count == 2
+
+
+async def test_post_retries_on_5xx_then_succeeds() -> None:
+    """A transient 5xx is retried before surfacing."""
+    session = _mock_session_post_sequence([_resp(503), _resp(200, {"data": 2})])
+    api = _build_api(session)
+    assert await api._post("/x") == {"data": 2}
+    assert session.post.call_count == 2
+
+
+async def test_post_gives_up_after_exhausting_retries() -> None:
+    """Persistent failures raise StigaApiError after all attempts (3 total)."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    session = _mock_session_post_sequence([aiohttp.ClientOSError()] * 3)
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._post("/x")
+    assert session.post.call_count == 3
+
+
+async def test_post_does_not_retry_4xx() -> None:
+    """A 4xx is a caller error and must surface immediately, no retry."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    session = _mock_session_post_sequence([_resp(404)])
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._post("/x", retry=False)
+    assert session.post.call_count == 1
+
+
+async def test_post_does_not_retry_timeout() -> None:
+    """Timeouts already consumed the budget; they surface without retrying."""
+    from custom_components.stiga_mower.api import StigaApiError
+
+    session = _mock_session_post_sequence([TimeoutError()])
+    api = _build_api(session)
+    with pytest.raises(StigaApiError):
+        await api._post("/x")
+    assert session.post.call_count == 1
+
+
 async def test_get_token_double_checked_lock_single_login() -> None:
     """Concurrent get_token() callers trigger exactly one Firebase login."""
     import asyncio as _asyncio

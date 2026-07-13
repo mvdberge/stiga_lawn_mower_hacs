@@ -18,6 +18,7 @@ def _make_coordinator(hass, *, statuses=None, mqtt_connected=True, meta=None):
     api = MagicMock()
     api.get_token = AsyncMock(return_value="token")
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     c = StigaDataUpdateCoordinator(hass, entry, api)
     c._devices = [{"attributes": {"uuid": "u1", "name": "Bot", "mac_address": "MAC1"}}]
     c._mqtt_connected = mqtt_connected

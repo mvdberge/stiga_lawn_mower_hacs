@@ -31,6 +31,7 @@ def make_coordinator(
     api = MagicMock()
     api.get_token = AsyncMock(return_value="token")
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     c = StigaDataUpdateCoordinator(hass, entry, api)
     c._devices = [{"attributes": {"uuid": "u1", "name": "Bot", "mac_address": "MAC1"}}]
     if live_settings is not None:

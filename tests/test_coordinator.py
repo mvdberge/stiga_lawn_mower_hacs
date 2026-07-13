@@ -203,6 +203,7 @@ async def coordinator(hass) -> StigaDataUpdateCoordinator:
     api = MagicMock()
     api.get_token = AsyncMock(return_value="token")
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     c = StigaDataUpdateCoordinator(hass, entry, api)
     # Pretend a regular REST refresh has populated data so push handlers
     # are allowed to call async_set_updated_data.
@@ -505,6 +506,7 @@ def test_publish_update_no_op_before_first_refresh(hass) -> None:
     """Push handlers are silent until the first REST poll completes."""
     api = MagicMock()
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     c = StigaDataUpdateCoordinator(hass, entry, api)
     c._devices = [{"attributes": {"uuid": "u1", "mac_address": "MAC1"}}]
 
@@ -612,6 +614,7 @@ def rest_coordinator(hass) -> StigaDataUpdateCoordinator:
     api.get_perimeter = AsyncMock(return_value={})
     api.get_bases = AsyncMock(return_value=[])
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     return StigaDataUpdateCoordinator(hass, entry, api)
 
 
@@ -725,6 +728,7 @@ async def test_partial_status_failure_still_counts_as_success(
     api.get_perimeter = AsyncMock(return_value={})
     api.get_bases = AsyncMock(return_value=[])
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     c = StigaDataUpdateCoordinator(hass, entry, api)
 
     await c.async_refresh()

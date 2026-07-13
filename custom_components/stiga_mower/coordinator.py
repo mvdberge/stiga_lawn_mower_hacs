@@ -482,8 +482,16 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             now = dt_util.utcnow()
             if self._meta_next_refresh is None or now >= self._meta_next_refresh:
                 self._meta_next_refresh = now + META_REFRESH_INTERVAL
-                self.hass.async_create_task(self._refresh_meta())
-                self.hass.async_create_task(self._refresh_bases())
+                # Tie to the config entry so both tasks are cancelled on unload/
+                # reload instead of lingering and writing into a torn-down
+                # coordinator (hass.async_create_task would not be cancelled).
+                if (entry := self.config_entry) is not None:
+                    entry.async_create_background_task(
+                        self.hass, self._refresh_meta(), name="stiga_meta_refresh"
+                    )
+                    entry.async_create_background_task(
+                        self.hass, self._refresh_bases(), name="stiga_base_refresh"
+                    )
 
             # The poll is only "successful" if at least one device's status
             # was fetched fresh. Without this guard, silently-swallowed API
@@ -564,9 +572,12 @@ _MQTT_PASSTHROUGH_FIELDS = (
     "zone_completed_pct",
     "garden_completed_pct",
     "satellites",
+    "gps_quality",
+    "rtk_quality_pct",
     "rtk_fix_type",
     "rsrp",
     "rsrq",
+    "signal_quality_pct",
     "battery_voltage",
     "battery_current",
     "battery_temp_c",
@@ -597,12 +608,15 @@ _STICKY_LIVE_FIELDS = frozenset(
         "battery_voltage",
         "battery_remaining",
         "satellites",
+        "gps_quality",
+        "rtk_quality_pct",
         "rtk_fix_type",
         "network_kind",
         "network_type",
         "network_band",
         "rsrp",
         "rsrq",
+        "signal_quality_pct",
     }
 )
 

@@ -31,6 +31,7 @@ def _coordinator(hass):
     api = MagicMock()
     api.get_token = AsyncMock(return_value="token")
     entry = MagicMock(data={"email": "e", "password": "p"})
+    entry.async_create_background_task = lambda hass, coro, name=None: hass.async_create_task(coro)
     c = StigaDataUpdateCoordinator(hass, entry, api)
     c._devices = [{"attributes": {**_SENSITIVE}}]
     c.async_set_updated_data(c._build_data(rest_statuses={"dev-uuid": {"has_data": True}}))

@@ -20,6 +20,26 @@ exclude_lines = [
     "raise NotImplementedError",
 ]
 
+[tool.mypy]
+# Strict typing scoped to the integration package (Platinum quality-scale rule).
+# Dependencies (homeassistant, aiohttp, …) are followed silently and not
+# reported; only our own code is held to the strict settings below.
+python_version = "3.14"
+strict = true
+# Home Assistant re-exports many symbols (e.g. DeviceInfo, LawnMowerActivity)
+# without listing them in __all__; it does not enforce no-implicit-reexport
+# itself, so we mirror that to consume its public API conventionally.
+implicit_reexport = true
+follow_imports = "silent"
+show_error_codes = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "."
+
+[[tool.mypy.overrides]]
+module = ["aiomqtt.*", "voluptuous.*"]
+ignore_missing_imports = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"

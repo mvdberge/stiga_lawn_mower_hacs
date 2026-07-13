@@ -3,23 +3,30 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Coroutine
+from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .api import StigaAPI
 from .const import CONF_EMAIL, CONF_PASSWORD, DOMAIN
 from .coordinator import StigaDataUpdateCoordinator
 from .mqtt_client import StigaMQTT
-from .schedule_manager import StigaScheduleManager
+
+_KEYBOARD_LOCK_SUFFIX = "_keyboard_lock"
+_SLEEP_MODE_SUFFIX = "_sleep_mode"
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.BUTTON,
+    Platform.CALENDAR,
     Platform.LAWN_MOWER,
     Platform.NUMBER,
     Platform.SELECT,
@@ -32,6 +39,8 @@ type StigaConfigEntry = ConfigEntry[StigaDataUpdateCoordinator]
 
 async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> bool:
     """Set up the integration."""
+    await _migrate_keyboard_lock_unique_id(hass, entry)
+
     session = async_get_clientsession(hass)
     api = StigaAPI(
         email=entry.data[CONF_EMAIL],
@@ -58,7 +67,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> boo
                 hass,
                 DOMAIN,
                 "mqtt_connection_failed",
-                is_fixable=True,
+                is_fixable=False,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key="mqtt_connection_failed",
                 translation_placeholders={"error": str(err)},
@@ -70,18 +79,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> boo
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # Must run after async_forward_entry_setups so the mower device entries
-    # are already present in the device registry when we associate the
-    # schedule helper entity with the device.
-    schedule_manager = StigaScheduleManager(hass, entry, coordinator)
-    await schedule_manager.async_setup()
-
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> bool:
     """Unload the integration."""
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+
+
+async def async_remove_config_entry_device(
+    hass: HomeAssistant,
+    config_entry: StigaConfigEntry,
+    device_entry: dr.DeviceEntry,
+) -> bool:
+    """Allow deleting a device the STIGA account no longer reports.
+
+    Returns True (allow removal) when none of the device's identifiers match a
+    currently-known mower, so a mower removed from the STIGA.GO account can be
+    cleaned up from the Home Assistant UI instead of lingering forever.
+    """
+    coordinator = config_entry.runtime_data
+    known_ids = {
+        (DOMAIN, uuid)
+        for device in (coordinator.data or {}).get("devices", [])
+        if (uuid := (device.get("attributes") or {}).get("uuid"))
+    }
+    return not any(identifier in known_ids for identifier in device_entry.identifiers)
 
 
 def _build_mqtt(
@@ -115,7 +138,16 @@ def _build_mqtt(
         )
         return None
 
-    broker_id = max(set(broker_ids), key=broker_ids.count) if broker_ids else None
+    unique_brokers = set(broker_ids)
+    broker_id = max(unique_brokers, key=broker_ids.count) if broker_ids else None
+    if len(unique_brokers) > 1:
+        _LOGGER.warning(
+            "Robots report differing MQTT brokers %s; connecting only to the "
+            "majority broker %s. Robots on other brokers will not receive MQTT "
+            "updates (REST polling still works for them).",
+            sorted(unique_brokers),
+            broker_id,
+        )
 
     mqtt = StigaMQTT(hass, api.get_token, broker_id=broker_id)
     for mac in macs:
@@ -133,6 +165,28 @@ def _build_mqtt(
     return mqtt
 
 
+async def _migrate_keyboard_lock_unique_id(hass: HomeAssistant, entry: StigaConfigEntry) -> None:
+    """Rewrite legacy ``*_keyboard_lock`` unique IDs to ``*_sleep_mode``.
+
+    Field 2 of the SETTINGS protobuf was historically labelled ``keyboard_lock``
+    (matching matthewgream/stiga-api), but wire-level capture on 2026-06-02
+    proved it is actually the firmware's sleep/wake toggle: status_type
+    transitions to 54 ("sleeping") after the app sends field 2 = 1, and back
+    to 4 ("docking") after field 2 = 0. The switch entity has been renamed
+    accordingly. This migration keeps the entity registry entry — and therefore
+    the user-visible entity_id used in automations — stable across the rename.
+    """
+
+    @callback
+    def _update(entity: er.RegistryEntry) -> dict[str, str] | None:
+        if entity.unique_id.endswith(_KEYBOARD_LOCK_SUFFIX):
+            new_uid = entity.unique_id[: -len(_KEYBOARD_LOCK_SUFFIX)] + _SLEEP_MODE_SUFFIX
+            return {"new_unique_id": new_uid}
+        return None
+
+    await er.async_migrate_entries(hass, entry.entry_id, _update)
+
+
 def _is_real_mac(value: object) -> bool:
     """Heuristic for the STIGA cloud's MAC field.
 
@@ -143,7 +197,7 @@ def _is_real_mac(value: object) -> bool:
     return isinstance(value, str) and ":" in value and len(value) >= 11
 
 
-def _make_unload(mqtt: StigaMQTT | None):
+def _make_unload(mqtt: StigaMQTT | None) -> Callable[[], Coroutine[Any, Any, None]]:
     """Closure that stops the MQTT loop on entry unload."""
 
     async def _unload() -> None:

@@ -84,6 +84,15 @@ async def async_get_config_entry_diagnostics(
         "bases": _redact_bases(data.get("bases", [])),
         "live_base_status": list(data.get("live_base_status", {}).values()),
         "live_base_version": list(data.get("live_base_version", {}).values()),
+        # Live MQTT state: connection flag plus the decoded meta/settings/
+        # schedule buckets. The uuid/MAC keys are dropped (PII) — the inner
+        # dicts carry every decoded field already, matching the handling of
+        # "statuses" and "live_base_*" above. None of these buckets contain
+        # credentials.
+        "mqtt_connected": data.get("mqtt_connected"),
+        "meta": list(data.get("meta", {}).values()),
+        "live_settings": list(data.get("live_settings", {}).values()),
+        "live_schedule": list(data.get("live_schedule", {}).values()),
     }
 
 

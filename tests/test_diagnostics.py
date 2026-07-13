@@ -61,6 +61,26 @@ async def test_config_entry_diagnostics_redacts_all_sensitive_fields(hass) -> No
 
 
 @pytest.mark.asyncio
+async def test_config_entry_diagnostics_exposes_live_mqtt_state(hass) -> None:
+    c = _coordinator(hass)
+    c._mqtt_connected = True
+    c._live_settings = {"3C:22:7F:AA:BA:EA": {"rain": {"enabled": True}}}
+    c._live_schedule = {"3C:22:7F:AA:BA:EA": {"enabled": False}}
+    c.async_set_updated_data(c._build_data(rest_statuses={"dev-uuid": {"has_data": True}}))
+
+    diag = await async_get_config_entry_diagnostics(hass, _entry(c))
+
+    assert diag["mqtt_connected"] is True
+    # Buckets are lists of the inner dicts — the MAC keys must be dropped.
+    assert diag["live_settings"] == [{"rain": {"enabled": True}}]
+    assert diag["live_schedule"] == [{"enabled": False}]
+    assert "meta" in diag
+    assert isinstance(diag["meta"], list)
+    assert "3C:22:7F:AA:BA:EA" not in diag["live_settings"]
+    assert "3C:22:7F:AA:BA:EA" not in diag["live_schedule"]
+
+
+@pytest.mark.asyncio
 async def test_device_diagnostics_redacts_sensitive_fields(hass) -> None:
     c = _coordinator(hass)
     entry = _entry(c)

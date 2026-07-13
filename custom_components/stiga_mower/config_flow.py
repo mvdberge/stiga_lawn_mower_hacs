@@ -64,11 +64,14 @@ class StigaConfigFlow(ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            await self.async_set_unique_id(user_input[CONF_EMAIL].lower())
+            # Normalize once so unique_id and stored data cannot diverge.
+            email = user_input[CONF_EMAIL].strip().lower()
+            user_input[CONF_EMAIL] = email
+            await self.async_set_unique_id(email)
             self._abort_if_unique_id_configured()
 
             error, has_devices = await _validate_credentials(
-                self.hass, user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
+                self.hass, email, user_input[CONF_PASSWORD]
             )
             if error:
                 errors["base"] = error
@@ -76,7 +79,7 @@ class StigaConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "no_devices"
             else:
                 return self.async_create_entry(
-                    title=user_input[CONF_EMAIL],
+                    title=email,
                     data=user_input,
                 )
 
@@ -126,8 +129,12 @@ class StigaConfigFlow(ConfigFlow, domain=DOMAIN):
         reconfigure_entry = self._get_reconfigure_entry()
 
         if user_input is not None:
-            new_email = user_input[CONF_EMAIL]
-            if new_email.lower() != reconfigure_entry.unique_id:
+            # Normalize the new email the same way as in the user step so the
+            # mismatch check compares like-for-like against the lowercased
+            # unique_id and the stored data stays consistent.
+            new_email = user_input[CONF_EMAIL].strip().lower()
+            user_input[CONF_EMAIL] = new_email
+            if new_email != reconfigure_entry.unique_id:
                 return self.async_abort(reason="account_mismatch")
 
             error, has_devices = await _validate_credentials(

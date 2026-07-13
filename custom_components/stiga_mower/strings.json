@@ -47,10 +47,10 @@
       }
     },
     "error": {
-      "invalid_auth": "Incorrect email address or password.",
-      "cannot_connect": "Failed to connect to the STIGA cloud. Please check your internet connection.",
+      "invalid_auth": "Invalid email address or password.",
+      "cannot_connect": "Failed to connect to STIGA Cloud. Please check your internet connection.",
       "no_devices": "No STIGA devices found in this account.",
-      "unknown": "Unexpected error. Please check the logs."
+      "unknown": "Unknown error. Please check the logs."
     },
     "abort": {
       "already_configured": "This STIGA account is already configured.",

@@ -80,11 +80,23 @@ def _is_printable_utf8(buf: bytes) -> bool:
 # ---------------------------------------------------------------- Decode
 
 
-def decode(buf: bytes, *, fixed32_as_int: bool = False) -> dict[int, Any]:
+def decode(
+    buf: bytes,
+    *,
+    fixed32_as_int: bool = False,
+    raw_fields: set[int] | None = None,
+) -> dict[int, Any]:
     """Parse a protobuf payload into `{field_number: value}`.
 
     Repeated fields are returned as a list. Nested messages are decoded
     recursively when the LEN payload happens to be valid wire format.
+
+    ``raw_fields`` lists top-level field numbers whose LEN payload must be
+    returned verbatim as ``bytes`` instead of being run through the
+    str/submessage auto-detection heuristic. Use it for opaque binary blobs
+    (e.g. the schedule bitmap) that can coincidentally parse as valid protobuf
+    and would otherwise be mis-surfaced as a nested dict. Applies to this call
+    only — it is not propagated into recursively decoded submessages.
     """
     out: dict[int, Any] = {}
     pos = 0
@@ -95,6 +107,9 @@ def decode(buf: bytes, *, fixed32_as_int: bool = False) -> dict[int, Any]:
         if field == 0:
             raise ProtobufError(f"invalid field number 0 at offset {pos - 1}")
 
+        # value takes int / bytes / float / str / nested-dict depending on the
+        # wire type below, so it is intentionally dynamically typed.
+        value: Any
         if wire == WIRE_VARINT:
             value, pos = _read_varint(buf, pos)
             # Fold the high-bit-set range back to signed two's complement so
@@ -116,7 +131,10 @@ def decode(buf: bytes, *, fixed32_as_int: bool = False) -> dict[int, Any]:
                 raise ProtobufError("truncated length-delimited")
             payload = buf[pos : pos + length]
             pos += length
-            value = _decode_len(payload, fixed32_as_int=fixed32_as_int)
+            if raw_fields and field in raw_fields:
+                value = bytes(payload)
+            else:
+                value = _decode_len(payload, fixed32_as_int=fixed32_as_int)
         elif wire == WIRE_FIXED32:
             if pos + 4 > len(buf):
                 raise ProtobufError("truncated fixed32")
@@ -231,7 +249,7 @@ def read_double_le(value: bytes | None) -> float | None:
     """
     if not isinstance(value, (bytes, bytearray)) or len(value) != 8:
         return None
-    return struct.unpack("<d", bytes(value))[0]
+    return float(struct.unpack("<d", bytes(value))[0])
 
 
 def hex_to_dict(hex_str: str, *, fixed32_as_int: bool = False) -> dict[int, Any]:

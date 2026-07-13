@@ -155,6 +155,26 @@ def test_negative_varint_round_trips_through_sign_folding() -> None:
     assert pb.decode(pb.encode({1: (1 << 62)})) == {1: (1 << 62)}
 
 
+# ---------------------------------------------------------------- raw_fields
+
+
+def test_decode_raw_fields_returns_bytes_not_submessage() -> None:
+    """A LEN payload that happens to be valid protobuf is normally auto-decoded
+    into a nested dict; ``raw_fields`` must force it back to verbatim bytes so
+    opaque binary blobs (e.g. the schedule bitmap) survive intact."""
+    inner = pb.encode({1: 5})  # valid wire format: b"\x08\x05"
+    msg = pb.encode({2: inner})
+    # Default heuristic mis-reads the blob as a nested message …
+    assert pb.decode(msg) == {2: {1: 5}}
+    # … raw_fields keeps it as the original bytes.
+    assert pb.decode(msg, raw_fields={2}) == {2: inner}
+
+
+def test_decode_raw_fields_does_not_affect_other_fields() -> None:
+    msg = pb.encode({1: 7, 2: pb.encode({1: 5})})
+    assert pb.decode(msg, raw_fields={2}) == {1: 7, 2: pb.encode({1: 5})}
+
+
 # ---------------------------------------------------------------- Helpers
 
 

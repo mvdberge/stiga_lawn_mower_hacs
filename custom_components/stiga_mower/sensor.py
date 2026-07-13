@@ -291,11 +291,7 @@ async def async_setup_entry(
                 if key in known:
                     continue
                 known.add(key)
-                cls = (
-                    StigaActiveErrorSensor
-                    if description.key == "active_error"
-                    else StigaSensor
-                )
+                cls = StigaActiveErrorSensor if description.key == "active_error" else StigaSensor
                 new_entities.append(cls(coordinator, device, description))
             # Dynamic per-zone area sensors — created once zone_elements arrive
             elements = coordinator.data.get("meta", {}).get(uuid, {}).get("zone_elements") or []

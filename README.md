@@ -6,129 +6,38 @@
 [![Lint](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/lint.yml/badge.svg)](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/lint.yml)
 [![Tests](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/test.yml/badge.svg)](https://github.com/mvdberge/stiga_lawn_mower_hacs/actions/workflows/test.yml)
 
-
-Native Home Assistant integration for STIGA robotic lawn mowers (Vista / A-Series models).  
-Combines the official [**STIGA Integration REST API**](https://www.stiga.com/int/stiga-integration-api) with direct MQTT cloud communication for live status, real-time position tracking, and full schedule management.
-
----
-
-## Architecture
-
-```
-┌──────────────────┐    REST (every 6 h)   ┌──────────────────────┐
-│  STIGA REST API  │ ────────────────────▶ │     Coordinator      │
-│  - Auth/Refresh  │                       │  push-driven via     │
-│  - /garage       │ ◀──── Discovery ───── │  async_set_updated_  │
-│  - /perimeters   │                       │  data() per frame    │
-└──────────────────┘                       └──────────────────────┘
-                                                      ▲
-┌──────────────────┐  Live status / cmds              │
-│  STIGA MQTT      │ ────────────────────────────────▶│
-│  (aiomqtt+mTLS)  │                                  │
-│  cloud_push      │ ◀─── Commands ───────────────────│
-└──────────────────┘                         HA Entity Layer
-```
-
-- **REST** handles device discovery, garden perimeter, and notification polling.
-- **MQTT** delivers live status frames (activity, battery, GPS, sensors) and accepts commands (start, pause, dock, settings, schedule updates) with minimal latency.
-- The coordinator is **push-driven**: MQTT frames trigger `async_set_updated_data` immediately; the 30-second REST poll acts as a liveness check only.
+Monitor and control your STIGA robot mower from Home Assistant — start, pause and dock it,
+follow live status and battery, manage the weekly mowing schedule, and automate everything.
+It uses the same STIGA cloud account as the **STIGA.GO** app, so there is no extra hardware,
+gateway or API key to set up: your app login is all you need.
 
 ---
 
-## Supported Models
+## What you can do
 
-All STIGA robots controllable via the **STIGA.GO app**:
-
-- Vista models: A 6v, A 8v, A 10v, A 15v, …
-- A-Series: A 1500, A 3000, …
+- **See what the mower is doing** at a glance — mowing, charging, paused or in error — plus
+  battery level, current zone and mowing progress.
+- **Control it** from dashboards or automations: start, pause (stops in place) and send it back
+  to the dock.
+- **Manage the weekly schedule** directly in the Home Assistant calendar — add or remove mowing
+  windows and they sync back to the mower in seconds.
+- **Send it to sleep and back** — put the mower into hibernation when you don't need it and wake it
+  again, straight from Home Assistant.
+- **Change settings** such as cutting height, rain sensor and rain delay, anti-theft and
+  notifications.
+- **Automate** with the rest of your home — e.g. dock when it starts to rain, or only mow when the
+  battery is above a threshold.
 
 ---
 
-## Features
+## Supported mowers
 
-### Lawn Mower Entity
-| Feature | Notes |
-|---|---|
-| **Start mowing** | `lawn_mower.start_mowing` |
-| **Pause** | Real stop-in-place via MQTT (not dock) |
-| **Return to dock** | `lawn_mower.dock` |
-| **States** | `mowing`, `docked`, `paused`, `returning`, `error` |
-| **Battery level** | Shown directly on the entity card |
+Any STIGA robot mower you manage through the **STIGA.GO** app, including the STIGA A (Autonomous)
+and Vista ranges — for example A 1500 / A 3000 / A 5000 and the Vista A 6v–A 15v models.
 
-### Sensor Entities
-| Sensor | Unit | Category |
-|---|---|---|
-| Battery level | % | — |
-| Remaining capacity | mAh | diagnostic |
-| Battery capacity | mAh | diagnostic |
-| Battery health | % | diagnostic |
-| Charge cycles | — | diagnostic |
-| Cutting height | mm | diagnostic |
-| Total work time | — | diagnostic |
-| Current zone | — | — |
-| Zone progress | % | — |
-| Garden progress | % | — |
-| Garden area | m² | diagnostic |
-| Zones | count | diagnostic |
-| Obstacles | count | diagnostic |
-| Obstacle area | m² | diagnostic |
-| GPS satellites | — | diagnostic |
-| RTK quality | % | diagnostic |
-| GPS quality | — | diagnostic |
-| RSSI | dBm | diagnostic |
-| RSRP | dBm | diagnostic |
-| RSRQ | dB | diagnostic |
-| Signal quality | % | diagnostic |
-
-### Binary Sensor Entities
-| Sensor | Notes |
-|---|---|
-| Cloud connection | MQTT link to the STIGA cloud |
-| Rain sensor | Current rain detection state |
-| Lift sensor | Mower lifted off the ground |
-| Bump sensor | Collision detected |
-| Slope sensor | Slope too steep |
-| Lid | Lid open/closed |
-| Docked | Robot at charging station |
-| Charging | Battery currently charging |
-| Error | Active error condition |
-
-### Number Entity
-| Entity | Range | Step |
-|---|---|---|
-| Cutting height | 20–60 mm | 5 mm |
-
-### Switch Entities (Configuration)
-| Switch | Notes |
-|---|---|
-| Rain sensor | Enable/disable rain detection |
-| Anti-theft | PIN protection |
-| Keyboard lock | Lock physical buttons |
-| Push notifications | App notifications |
-| Obstacle notifications | Notify on obstacle detection |
-| Smart cutting height | Automatic height adjustment |
-| Long exit | Extended exit from charging station |
-
-### Select Entities (Configuration)
-| Select | Options |
-|---|---|
-| Cutting mode | Dense Grid, Chess Board, North-South, East-West |
-| Rain delay | 4 h, 8 h, 12 h |
-
-### Calendar Entity
-- **Mowing Schedule** — reads the live weekly mowing schedule from the robot and displays each active time window as a recurring Home Assistant calendar event (RRULE `FREQ=WEEKLY`)
-- Create new mowing windows directly from the HA calendar UI
-- Delete existing windows — changes are written back to the robot via MQTT within seconds
-- Schedule granularity: **30 minutes** (hardware constraint)
-
-### Device Tracker
-- **Live GPS position** — updated from MQTT on every status frame; shown on the HA map card
-
-### Button Entities (Diagnostic / Configuration)
-| Button | Notes |
-|---|---|
-| Calibrate blades | Trigger blade calibration routine |
-| Refresh status | Request an immediate status update from the robot |
+Camera-guided models are the primary test target. Classic A-Series mowers (without a camera) use
+the same cloud API and are expected to work, but have had less real-world testing — see
+[Known limitations](#known-limitations).
 
 ---
 
@@ -136,87 +45,177 @@ All STIGA robots controllable via the **STIGA.GO app**:
 
 ### Via HACS (recommended)
 
-1. Open HACS → **Integrations** → Menu (⋮) → **Custom Repositories**
-2. URL: `https://github.com/mvdberge/stiga_lawn_mower_hacs`  
-   Category: **Integration**
-3. Search for **STIGA Lawn Mower** and install
-4. Restart Home Assistant
+1. HACS → **Integrations** → menu (⋮) → **Custom repositories**
+2. Repository: `https://github.com/mvdberge/stiga_lawn_mower_hacs` · Category: **Integration**
+3. Install **STIGA Lawn Mower**, then restart Home Assistant.
 
 ### Manual
 
-1. Copy the `custom_components/stiga_mower/` folder into your  
-   `<config>/custom_components/` directory
-2. Restart Home Assistant
+1. Copy `custom_components/stiga_mower/` into your `<config>/custom_components/` directory.
+2. Restart Home Assistant.
 
 ---
 
 ## Setup
 
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **STIGA Lawn Mower**
-3. Enter the e-mail and password of your **STIGA.GO app** account
-4. Done – all linked robots are detected automatically and MQTT starts immediately
+1. **Settings → Devices & Services → Add Integration** and search for **STIGA Lawn Mower**.
+2. Enter the **e-mail and password of your STIGA.GO account**.
+3. That's it — every mower on the account is added automatically and the live connection starts
+   immediately.
+
+If your password changes later, Home Assistant will prompt you to re-enter it. You can also update
+the credentials any time via the integration's **Reconfigure** option.
 
 ---
 
-## Automation Examples
+## Entities & controls
+
+### Mower
+
+One mower tile per robot with **Start**, **Pause** (stops the mower where it is — it does not send
+it back to the dock) and **Return to dock**. Its state shows what the mower is doing: mowing,
+paused, returning, docked or error.
+
+### Controls you can change
+
+| Control | Type | Details |
+|---|---|---|
+| Cutting height | Number (slider) | 20–60 mm in 5 mm steps |
+| Mowing mode | Select | **Manual** or **Auto** (Auto follows the weekly schedule) |
+| Rain delay | Select | 4 h / 8 h / 12 h |
+| Rain sensor | Switch | Pause mowing while rain is detected |
+| Anti-theft | Switch | Anti-theft / PIN protection |
+| Hibernation | Switch | Put the mower into hibernation (sleep) or wake it up again |
+| Smart cutting height | Switch | Automatic per-zone height |
+| Long exit | Switch | Extended exit path when leaving the dock |
+| Push notifications | Switch | STIGA app push notifications |
+| Obstacle notifications | Switch | Notify when an obstacle is detected |
+| Calibrate blades | Button | Run the blade-calibration routine |
+| Reset error | Button | Clear the mower's current error |
+
+### Status sensors
+
+Read-only sensors, grouped by topic. Most are **diagnostic and disabled by default** — enable the
+ones you want from the device page.
+
+- **Battery** — level, voltage, current, power, health, capacity, remaining capacity, charge
+  cycles, estimated time left.
+- **Mowing** — current zone, zone progress, garden progress.
+- **Garden** — total area, number of zones, obstacle count and area.
+- **Position & connectivity** — GPS satellites, GPS/RTK quality, cellular signal (RSRP, RSRQ,
+  signal quality), dock firmware version.
+- **Binary sensors** — cloud connection, rain, lift, bump, slope, lid, docked, charging, error.
+
+### Mowing schedule (calendar)
+
+A `calendar` entity mirrors the mower's weekly schedule: each active time window shows as a
+recurring event. Create or delete windows from the calendar UI and they are written back to the
+mower within seconds. Windows snap to a **30-minute grid** (a hardware limit of the mower).
+
+---
+
+## How status updates
+
+The integration holds a live connection to the STIGA cloud, so mower status, battery, position and
+sensor states refresh within seconds of the mower reporting them — there is no fixed polling delay.
+A lightweight background refresh also runs periodically to pick up device and garden details.
+
+If the cloud connection drops, the last known values are kept (so your dashboard doesn't flicker)
+and a repair notice appears in **Settings → Repairs**. It clears automatically once the connection
+is restored.
+
+---
+
+## Automation examples
+
+Entity IDs depend on your mower's name — adjust them to match yours.
 
 ```yaml
-# Start mowing at 9:00 on weekdays when battery > 50 %
+# Start mowing at 09:00 on weekdays, but only if the battery is above 50 %
 automation:
   - alias: "Mower – start in the morning"
-    trigger:
-      - platform: time
+    triggers:
+      - trigger: time
         at: "09:00:00"
-    condition:
+    conditions:
       - condition: time
         weekday: [mon, tue, wed, thu, fri]
       - condition: numeric_state
         entity_id: sensor.mower_battery_level
         above: 50
-    action:
-      - service: lawn_mower.start_mowing
+    actions:
+      - action: lawn_mower.start_mowing
         target:
           entity_id: lawn_mower.mower
+```
 
-# Dock when rain sensor triggers (binary sensor driven by MQTT)
+```yaml
+# Send the mower home as soon as the rain sensor triggers
 automation:
   - alias: "Mower – dock on rain"
-    trigger:
-      - platform: state
+    triggers:
+      - trigger: state
         entity_id: binary_sensor.mower_rain_sensor
         to: "on"
-    action:
-      - service: lawn_mower.dock
+    actions:
+      - action: lawn_mower.dock
         target:
           entity_id: lawn_mower.mower
 ```
 
 ---
 
-## Technical Details
+## Troubleshooting
+
+- **Asked to sign in again / "Invalid authentication"** — your STIGA.GO password changed or the
+  session expired. Re-enter the password when prompted, or use **Reconfigure**. Use exactly the
+  same credentials as the STIGA.GO app.
+- **Entities are "unavailable"** — the live cloud connection is down. Check the **Cloud connection**
+  binary sensor and **Settings → Repairs**. Control returns automatically once the connection is
+  back; no restart needed.
+- **"The mower has not reported its schedule yet"** when changing the mowing mode — right after a
+  restart the schedule hasn't arrived yet. Wait a few seconds and try again. (The change is refused
+  on purpose so it can't wipe your existing schedule.)
+- **No devices found during setup** — confirm the mower is registered in the STIGA.GO app under the
+  same account you signed in with.
+- **A mower you removed still appears** — open its device page and delete it (⋮ → **Delete**); the
+  integration permits removal once the mower is gone from your account.
+
+---
+
+## Known limitations
+
+- **Zone selection** — *Start* always mows the whole garden; starting a specific zone is not exposed
+  yet.
+- **Mower position** — GPS is surfaced as signal/satellite diagnostics, not as a live map location.
+- **Base station** — RTK base-station status is received but not yet exposed as entities.
+- **Classic A-Series (no camera)** — expected to work but less tested; please report issues.
+
+---
+
+<details>
+<summary>Under the hood (technical details)</summary>
 
 | Property | Value |
 |---|---|
 | API host | `connectivity-production.stiga.com` |
 | MQTT broker | `broker.connectivity-production.stiga.com` (port 8883, mTLS) |
-| Authentication | Firebase Bearer Token (same as STIGA.GO app) |
+| Authentication | Firebase bearer token (same as the STIGA.GO app) |
 | Token refresh | Every 50 min (token TTL 60 min) |
-| REST polling | Every 30 s (liveness) + every 6 h (full refresh) |
-| MQTT | Push-driven, reconnects automatically |
-| Platforms | `lawn_mower`, `sensor`, `binary_sensor`, `number`, `switch`, `select`, `button` (calendar surfaced via `StigaScheduleManager`, not as a HA platform) |
+| REST polling | Every 30 s (liveness) + periodic full refresh for metadata |
+| Live updates | Push-driven over MQTT; reconnects automatically |
+| Platforms | `lawn_mower`, `sensor`, `binary_sensor`, `number`, `switch`, `select`, `button`, `calendar` |
 | Minimum HA version | 2024.4.0 |
 
-### Schedule Wire Format
+**Data flow.** Device discovery, garden perimeter and metadata come from the STIGA REST API. Live
+status (activity, battery, GPS, sensors) and commands (start/pause/dock, settings, schedule) flow
+over an mTLS MQTT connection to the STIGA cloud. The coordinator is push-driven: each MQTT frame
+updates Home Assistant immediately, and the periodic REST poll acts as a liveness/metadata check.
 
-STIGA Vista / A15v robots encode their weekly schedule as **7 × 6 varint values** (42 logical values) inside a protobuf field. Each varint value is a bitmask covering 8 × 30-minute slots; together the 6 values per day cover all 48 half-hours from 00:00 to 23:30.
+**Schedule wire format.** The weekly schedule is encoded as 7 × 6 varint values (42 logical values)
+in a protobuf field; each value is a bitmask over 8 × 30-minute slots, together covering all 48
+half-hours of a day. Classic A-Series mowers (per
+[matthewgream/stiga-api](https://github.com/matthewgream/stiga-api)) use 42 raw bytes with the same
+layout, which the decoder handles transparently.
 
-Classic A-Series robots (as documented by [matthewgream/stiga-api](https://github.com/matthewgream/stiga-api)) use 42 raw bytes with the same bitmask layout. The decoder handles both formats transparently: values ≤ 127 are single-byte varints, identical to the raw-byte format.
-
----
-
-## Known Limitations
-
-- **Zone selection** — `lawn_mower.start_mowing` always starts the full garden. Mowing specific zones requires direct MQTT command construction (not exposed as a HA service yet).
-- **Base station** — live status of the RTK base station is received but not yet exposed as HA entities.
-- Stiga A-Series (without camera) haven not been tested
+</details>

@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Changed
+
+- **New hibernation switch (`switch.sleep_mode`, "Hibernation" / "Ruhezustand")** to put the robot to sleep and wake it again from Home Assistant — the same action as the STIGA.GO app's hibernation control. Wire-level capture of the app proved that SETTINGS field 2 is the firmware's sleep/wake toggle (Sleep sets field 2 = 1, Wake sets it back to 0), not the keypad lock it was previously assumed to be. The switch is now **enabled by default** so hibernation is available out of the box (previously it was the hidden, disabled-by-default `keyboard_lock` entity). Users who had enabled the old switch keep their `entity_id` and any automations referencing it via an automatic unique-id migration.
+
+### Fixed
+
+- Toggling switches like Anti-Theft, Push Notifications, Obstacle Notifications or Long Exit no longer wipes two additional firmware settings (`zone_cutting_height_uniform` field 9, and a still-opaque varint at field 11). The STIGA.GO app started bundling both fields with every SETTINGS update in a recent firmware/app version; per the same proto3-atomicity behaviour that already applies to rain and cutting, omitting them server-side resets the firmware-internal value to default. The coordinator now backfills both from the last SETTINGS frame on every outbound write.
+
 ## [2.5.1] - 2026-06-01
 
 ### Fixed

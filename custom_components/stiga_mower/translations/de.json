@@ -61,6 +61,7 @@
   },
   "entity": {
     "sensor": {
+      "active_error":        { "name": "Aktiver Fehler" },
       "battery_capacity":    { "name": "Batteriekapazität" },
       "battery_current":     { "name": "Batteriestrom" },
       "battery_cycles":      { "name": "Batterieladezyklen" },

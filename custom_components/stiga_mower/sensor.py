@@ -28,7 +28,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import StigaConfigEntry
-from .const import DOMAIN, split_firmware_version
+from .const import ATTR_ERROR_CODE, DOMAIN, ERROR_INFO_CODES, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
 
 PARALLEL_UPDATES = 1
@@ -74,6 +74,17 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         device_class=SensorDeviceClass.BATTERY,
         state_class=SensorStateClass.MEASUREMENT,
+    ),
+    # Central "active error" sensor mirroring the STIGA GO app, which shows the
+    # current fault's description in one place. Its STATE is the human-readable
+    # error description (None when there is no active error). Instantiated as a
+    # StigaActiveErrorSensor in async_setup_entry so the raw error_code is
+    # translated via ERROR_INFO_CODES.
+    StigaSensorDescription(
+        key="active_error",
+        status_key="error_code",
+        translation_key="active_error",
+        entity_category=EntityCategory.DIAGNOSTIC,
     ),
     # Diagnostic sensors useful enough to stay enabled by default.
     StigaSensorDescription(
@@ -280,7 +291,12 @@ async def async_setup_entry(
                 if key in known:
                     continue
                 known.add(key)
-                new_entities.append(StigaSensor(coordinator, device, description))
+                cls = (
+                    StigaActiveErrorSensor
+                    if description.key == "active_error"
+                    else StigaSensor
+                )
+                new_entities.append(cls(coordinator, device, description))
             # Dynamic per-zone area sensors — created once zone_elements arrive
             elements = coordinator.data.get("meta", {}).get(uuid, {}).get("zone_elements") or []
             for zone in elements:
@@ -384,6 +400,36 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         return {f"zone_{e['id']}_area_m2": e["area_m2"] for e in elements}
 
 
+class StigaActiveErrorSensor(StigaSensor):
+    """Central sensor whose STATE is the active fault's description.
+
+    Mirrors the STIGA GO app, which surfaces the current error's description in
+    one place. Availability and device_info are inherited from StigaSensor; only
+    the value and attributes differ because the raw error_code must be translated
+    into a human-readable description via ERROR_INFO_CODES.
+    """
+
+    @property
+    def native_value(self) -> str | None:
+        status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
+        code = status.get(self.entity_description.status_key)
+        if code is None:
+            # No active error – HA renders this as "unknown"/empty, which is the
+            # intended "no error" state (no fabricated "OK" string).
+            return None
+        # Unknown codes fall back to a readable form of the raw code.
+        return _lookup_error_description(code) or str(code)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
+        code = status.get(self.entity_description.status_key)
+        if code is None:
+            return None
+        # Expose the raw code so automations can match on it directly.
+        return {ATTR_ERROR_CODE: code}
+
+
 class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
     """One sensor per zone showing its area in m²."""
 
@@ -463,3 +509,19 @@ class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorE
 
 def _dev_uuid(device: dict[str, Any]) -> str:
     return str((device.get("attributes") or {}).get("uuid", ""))
+
+
+def _lookup_error_description(code: Any) -> str | None:
+    """Translate a numeric error/info code into a human-readable key.
+
+    Mirrors lawn_mower._lookup_error_description: handles both int codes and
+    hex-strings, returning None when the code is unknown to ERROR_INFO_CODES.
+    """
+    if isinstance(code, int):
+        return ERROR_INFO_CODES.get(code)
+    if isinstance(code, str):
+        try:
+            return ERROR_INFO_CODES.get(int(code, 0))
+        except ValueError:
+            return None
+    return None

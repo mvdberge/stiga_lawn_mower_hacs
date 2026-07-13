@@ -30,6 +30,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import StigaConfigEntry
 from .const import ATTR_ERROR_CODE, DOMAIN, ERROR_INFO_CODES, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
+from .mqtt_constants import ROBOT_GPS_QUALITY
 
 PARALLEL_UPDATES = 1
 
@@ -40,8 +41,11 @@ _MQTT_ONLY_SENSOR_KEYS = frozenset(
         "zone_completed_pct",
         "garden_completed_pct",
         "satellites",
+        "gps_quality",
+        "rtk_quality_pct",
         "rsrp",
         "rsrq",
+        "signal_quality_pct",
     )
 )
 
@@ -241,6 +245,27 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
     ),
+    # gps_quality is a categorical GNSS-coverage enum. decode_status already maps
+    # the raw wire int to its human string via ROBOT_GPS_QUALITY, so native_value
+    # returns that string directly; we only mirror the same values as ENUM options.
+    StigaSensorDescription(
+        key="gps_quality",
+        status_key="gps_quality",
+        translation_key="gps_quality",
+        device_class=SensorDeviceClass.ENUM,
+        options=list(ROBOT_GPS_QUALITY.values()),
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="rtk_quality_pct",
+        status_key="rtk_quality_pct",
+        translation_key="rtk_quality_pct",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
     # Network / cellular signal diagnostics
     StigaSensorDescription(
         key="rsrp",
@@ -257,6 +282,15 @@ SENSOR_DESCRIPTIONS: tuple[StigaSensorDescription, ...] = (
         status_key="rsrq",
         translation_key="rsrq",
         native_unit_of_measurement="dB",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+    ),
+    StigaSensorDescription(
+        key="signal_quality_pct",
+        status_key="signal_quality_pct",
+        translation_key="signal_quality_pct",
+        native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,

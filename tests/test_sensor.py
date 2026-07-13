@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from homeassistant.components.sensor import SensorDeviceClass
 
 from custom_components.stiga_mower.coordinator import StigaDataUpdateCoordinator
 from custom_components.stiga_mower.sensor import (
@@ -65,6 +66,9 @@ def test_current_zone_unavailable_when_no_data(hass) -> None:
         ("current_zone", "current_zone", 3),
         ("zone_completed_pct", "zone_completed_pct", 42),
         ("garden_completed_pct", "garden_completed_pct", 78),
+        ("gps_quality", "gps_quality", "GOOD"),
+        ("rtk_quality_pct", "rtk_quality_pct", 87),
+        ("signal_quality_pct", "signal_quality_pct", 64),
     ],
 )
 def test_mqtt_sensor_unavailable_when_mqtt_disconnected(hass, key, status_key, value) -> None:
@@ -90,12 +94,29 @@ def test_current_zone_none_when_not_in_status(hass) -> None:
     "key,status_key,value",
     [
         ("satellites", "satellites", 12),
+        ("rtk_quality_pct", "rtk_quality_pct", 87),
     ],
 )
 def test_gps_sensor_value(hass, key, status_key, value) -> None:
     c = _make_coordinator(hass, statuses={status_key: value, "has_data": True})
     s = _sensor(c, key)
     assert s.native_value == value
+    assert s.available is True
+
+
+def test_gps_quality_enum_value(hass) -> None:
+    # decode_status already maps the raw GNSS enum int to its human string via
+    # ROBOT_GPS_QUALITY, so the sensor reads that string straight from status and
+    # exposes the same set as ENUM options.
+    from custom_components.stiga_mower.mqtt_constants import ROBOT_GPS_QUALITY
+
+    c = _make_coordinator(hass, statuses={"gps_quality": "GOOD", "has_data": True})
+    s = _sensor(c, "gps_quality")
+    assert s.native_value == "GOOD"
+    assert s.available is True
+    assert s.entity_description.device_class == SensorDeviceClass.ENUM
+    assert s.entity_description.options == list(ROBOT_GPS_QUALITY.values())
+    assert "GOOD" in s.entity_description.options
 
 
 # ------------------------------------------------------------------ Signal quality sensors
@@ -106,12 +127,14 @@ def test_gps_sensor_value(hass, key, status_key, value) -> None:
     [
         ("rsrp", "rsrp", -80),
         ("rsrq", "rsrq", -10),
+        ("signal_quality_pct", "signal_quality_pct", 64),
     ],
 )
 def test_signal_sensor_value(hass, key, status_key, value) -> None:
     c = _make_coordinator(hass, statuses={status_key: value, "has_data": True})
     s = _sensor(c, key)
     assert s.native_value == value
+    assert s.available is True
 
 
 # ------------------------------------------------------------------ entity_registry_enabled_default
@@ -121,6 +144,9 @@ def test_signal_sensor_value(hass, key, status_key, value) -> None:
     "key",
     [
         "satellites",
+        "gps_quality",
+        "rtk_quality_pct",
+        "signal_quality_pct",
         "rsrp",
         "rsrq",
     ],

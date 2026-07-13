@@ -2,13 +2,25 @@
 
 ## [Unreleased]
 
+### Added
+
+- **Mowing schedule as a calendar entity** — the weekly mowing schedule is now a first-class `calendar.*` entity that lives under the mower device. Each active mowing window shows as a recurring event; create or delete windows straight from the Home Assistant calendar UI and they are written back to the mower within seconds. Edits from the STIGA.GO app sync back into the calendar automatically. Windows snap to the mower's 30-minute grid.
+- **New "Hibernation" switch** to put the robot to sleep and wake it again from Home Assistant — the same action as the STIGA.GO app's hibernation control. It replaces the old, hidden "Keyboard lock" switch, which never actually locked the keypad. Unlike its predecessor, Hibernation is **enabled by default** so it is available out of the box.
+- **New "Active error" sensor** giving the mower's current fault as a single readable value (with the raw error code as an attribute), so you can trigger automations or notifications on specific errors without decoding numeric codes yourself.
+- **New position and connectivity sensors** — GPS satellite count, GPS/RTK fix quality and cellular signal metrics (RSRP, RSRQ and overall signal quality) are now surfaced as diagnostic sensors, alongside the dock firmware version. As with the other diagnostic sensors, enable the ones you want from the device page.
+
 ### Changed
 
-- **New hibernation switch (`switch.sleep_mode`, "Hibernation" / "Ruhezustand")** to put the robot to sleep and wake it again from Home Assistant — the same action as the STIGA.GO app's hibernation control. Wire-level capture of the app proved that SETTINGS field 2 is the firmware's sleep/wake toggle (Sleep sets field 2 = 1, Wake sets it back to 0), not the keypad lock it was previously assumed to be. The switch is now **enabled by default** so hibernation is available out of the box (previously it was the hidden, disabled-by-default `keyboard_lock` entity). Users who had enabled the old switch keep their `entity_id` and any automations referencing it via an automatic unique-id migration.
+- **The mowing schedule is now a calendar entity, replacing the previous `schedule.*` helper entity.** This is a **breaking change**: the old `schedule.<mower>` helper entity is removed and a new `calendar.<mower>` entity takes its place. Any automations, scripts or dashboard cards that referenced the old `schedule.*` entity must be updated to point at the new `calendar.*` entity. Your mowing schedule on the mower itself is untouched — only how Home Assistant exposes it changes.
+- **The "Keyboard lock" switch was renamed to "Hibernation".** Home Assistant migrates the entity automatically, so if you had previously enabled it, your existing `entity_id` and any automations referencing it keep working — the meaning of the switch changes from a (non-functional) keypad lock to sleep/wake.
 
 ### Fixed
 
-- Toggling switches like Anti-Theft, Push Notifications, Obstacle Notifications or Long Exit no longer wipes two additional firmware settings (`zone_cutting_height_uniform` field 9, and a still-opaque varint at field 11). The STIGA.GO app started bundling both fields with every SETTINGS update in a recent firmware/app version; per the same proto3-atomicity behaviour that already applies to rain and cutting, omitting them server-side resets the firmware-internal value to default. The coordinator now backfills both from the last SETTINGS frame on every outbound write.
+- **Cutting height can no longer be set to an unsupported value.** The mower only accepts heights on a fixed 5 mm grid; entering an off-grid value (e.g. 22 mm) now shows a clear error instead of the UI appearing to accept a value the mower silently drops.
+- **More reliable sign-in.** When the cloud session expires the integration now quietly refreshes the access token instead of performing a full re-login, reducing the chance of being asked to sign in again and avoiding a login race that could occur on startup.
+- **Steadier live connection.** The real-time (MQTT) connection reconnects more robustly after network interruptions, no longer briefly flips the "Cloud connection" sensor during routine token refreshes, and copes better with unexpected or malformed data from the cloud without dropping the connection.
+- **Diagnostics no longer leak identifying details.** The downloadable diagnostics report now redacts your mower's MAC address, the MQTT broker address and your account identifiers, so it is safe to share when reporting issues.
+- **More accurate mower state and controls.** Start now goes over the live connection with a REST fallback, mower activity labels map more reliably (including previously unknown states), and MQTT-only sensors correctly show as unavailable when the live connection is down instead of reporting stale values.
 
 ## [2.5.1] - 2026-06-01
 

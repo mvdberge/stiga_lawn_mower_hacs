@@ -1,8 +1,7 @@
 """Calendar entity exposing the STIGA mowing schedule.
 
-Replaces the prior approach of creating a HA ``schedule.*`` helper entity:
-HA's schedule helper has no public Python API for programmatic creation, so
-the previous integration never managed to register an entity at all.
+Replaces the prior approach, which created a HA ``schedule.*`` helper entity
+via the schedule collection to expose the mowing schedule.
 
 This module instead provides a first-class ``calendar.*`` entity per mower,
 which naturally lives under the mower device, supports the HA calendar

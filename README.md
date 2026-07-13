@@ -66,6 +66,12 @@ the same cloud API and are expected to work, but have had less real-world testin
 If your password changes later, Home Assistant will prompt you to re-enter it. You can also update
 the credentials any time via the integration's **Reconfigure** option.
 
+### Removing the integration
+
+To remove the integration, go to **Settings → Devices & Services → STIGA Lawn Mower**, open the
+menu (⋮) on the integration entry and choose **Delete**. This removes all mowers, entities and
+stored credentials. Nothing needs to be changed in the STIGA.GO app.
+
 ---
 
 ## Entities & controls

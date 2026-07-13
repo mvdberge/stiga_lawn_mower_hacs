@@ -519,6 +519,17 @@ class StigaMQTT:
         payload = mm.encode_simple_request(mc.ROBOT_CMD_RESET_ERROR)
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
 
+    async def cmd_boot(self, mac: str) -> None:
+        """Send ROBOT_CMD_BOOT (9) — run the startup routine.
+
+        Mirrors the STIGA.GO app's "Boot ausführen": when the mower is stuck in
+        STARTUP_REQUIRED (status_type 252) it accepts no other command until it
+        has booted.  This kicks off CALIBRATION and leaves it in
+        WAITING_FOR_COMMAND once done (capture/capture_app_trace_boot.jsonl).
+        """
+        payload = mm.encode_simple_request(mc.ROBOT_CMD_BOOT)
+        await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
+
     async def cmd_settings_update(self, mac: str, settings: dict[str, Any]) -> None:
         """Send ROBOT_CMD_SETTINGS_UPDATE (18) with the given settings fields."""
         payload = mm.encode_settings_update(settings)

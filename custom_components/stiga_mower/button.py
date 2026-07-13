@@ -28,6 +28,7 @@ PARALLEL_UPDATES = 1
 class _ButtonAction(StrEnum):
     CALIBRATE_BLADES = "calibrate_blades"
     RESET_ERROR = "reset_error"
+    BOOT = "boot"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -35,9 +36,13 @@ class StigaButtonDescription(ButtonEntityDescription):
     """Extended button description.
 
     `action`: which command to publish when pressed.
+    `available_status_types`: when set, the button is only available while the
+        mower's current status_type is one of these values. Used for recovery
+        actions (e.g. boot) that only make sense in a specific state.
     """
 
     action: _ButtonAction = _ButtonAction.RESET_ERROR
+    available_status_types: tuple[str, ...] | None = None
 
 
 BUTTON_DESCRIPTIONS: tuple[StigaButtonDescription, ...] = (
@@ -52,6 +57,15 @@ BUTTON_DESCRIPTIONS: tuple[StigaButtonDescription, ...] = (
         key="reset_error",
         translation_key="reset_error",
         action=_ButtonAction.RESET_ERROR,
+    ),
+    # "Boot ausführen": recovers the mower from STARTUP_REQUIRED (the "undefined"
+    # state after e.g. a firmware reset). Only pressable while the robot is
+    # actually in that state — otherwise the command has no effect.
+    StigaButtonDescription(
+        key="perform_boot",
+        translation_key="perform_boot",
+        action=_ButtonAction.BOOT,
+        available_status_types=("STARTUP_REQUIRED",),
     ),
 )
 
@@ -111,6 +125,18 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
         return {}
 
     @property
+    def available(self) -> bool:
+        if not super().available:
+            return False
+        allowed = self.entity_description.available_status_types
+        if allowed is None:
+            return True
+        # `current_action` carries the live status_type string (STARTUP_REQUIRED,
+        # DOCKED, …) — see coordinator._merge_live_into_status.
+        status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
+        return status.get("current_action") in allowed
+
+    @property
     def device_info(self) -> DeviceInfo:
         a = self._device_attrs()
         meta = self.coordinator.data.get("meta", {}).get(self._uuid, {})
@@ -142,6 +168,8 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
                 await mqtt.cmd_calibrate_blades(self._mac)
             elif action == _ButtonAction.RESET_ERROR:
                 await mqtt.cmd_reset_error(self._mac)
+            elif action == _ButtonAction.BOOT:
+                await mqtt.cmd_boot(self._mac)
         except Exception as err:
             raise HomeAssistantError(
                 translation_domain=DOMAIN,

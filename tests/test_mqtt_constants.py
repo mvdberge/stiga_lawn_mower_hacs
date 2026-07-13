@@ -23,6 +23,8 @@ def test_critical_command_ids_have_expected_value() -> None:
     assert mc.ROBOT_CMD_STOP == 0
     assert mc.ROBOT_CMD_START == 1
     assert mc.ROBOT_CMD_GO_HOME == 4
+    assert mc.ROBOT_CMD_BOOT == 9
+    assert mc.ROBOT_CMD_NAMES[9] == "BOOT"
     assert mc.ROBOT_CMD_SETTINGS_UPDATE == 18
     assert mc.ROBOT_CMD_SCHEDULING_SETTINGS_UPDATE == 20
     assert mc.ROBOT_CMD_STATUS_REQUEST == 28

@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [2.6.0] - 2026-07-17
 
 ### Added
 
@@ -8,6 +8,7 @@
 - **New "Hibernation" switch** to put the robot to sleep and wake it again from Home Assistant — the same action as the STIGA.GO app's hibernation control. It replaces the old, hidden "Keyboard lock" switch, which never actually locked the keypad. Unlike its predecessor, Hibernation is **enabled by default** so it is available out of the box.
 - **New "Active error" sensor** giving the mower's current fault as a single readable value (with the raw error code as an attribute), so you can trigger automations or notifications on specific errors without decoding numeric codes yourself.
 - **New position and connectivity sensors** — GPS satellite count, GPS/RTK fix quality and cellular signal metrics (RSRP, RSRQ and overall signal quality) are now surfaced as diagnostic sensors, alongside the dock firmware version. As with the other diagnostic sensors, enable the ones you want from the device page.
+- **New "Perform boot" button** to get the mower going again when it is stuck in the "startup required" state — the same action as the STIGA.GO app's "Boot ausführen". The button only becomes actionable while the mower is actually in that state; pressing it runs the startup routine so the mower accepts commands again.
 
 ### Changed
 
@@ -21,6 +22,7 @@
 - **Steadier live connection.** The real-time (MQTT) connection reconnects more robustly after network interruptions, no longer briefly flips the "Cloud connection" sensor during routine token refreshes, and copes better with unexpected or malformed data from the cloud without dropping the connection.
 - **Diagnostics no longer leak identifying details.** The downloadable diagnostics report now redacts your mower's MAC address, the MQTT broker address and your account identifiers, so it is safe to share when reporting issues.
 - **More accurate mower state and controls.** Start now goes over the live connection with a REST fallback, mower activity labels map more reliably (including previously unknown states), and MQTT-only sensors correctly show as unavailable when the live connection is down instead of reporting stale values.
+- **Live-connection problems are now visible.** If the real-time connection can't be established, a repair notice appears in **Settings → Repairs** (and clears automatically once it recovers), instead of the mower silently staying on slower polling.
 
 ## [2.5.1] - 2026-06-01
 

@@ -128,7 +128,8 @@
     },
     "button": {
       "calibrate_blades": { "name": "Calibrate Blades" },
-      "reset_error":      { "name": "Reset Error" }
+      "reset_error":      { "name": "Reset Error" },
+      "perform_boot":     { "name": "Perform boot" }
     },
     "calendar": {
       "mowing_schedule": { "name": "Mowing Schedule" }

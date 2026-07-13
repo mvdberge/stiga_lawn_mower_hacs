@@ -47,6 +47,7 @@ def make_coordinator(
     mqtt.cmd_settings_update = AsyncMock()
     mqtt.cmd_calibrate_blades = AsyncMock()
     mqtt.cmd_reset_error = AsyncMock()
+    mqtt.cmd_boot = AsyncMock()
     mqtt.cmd_schedule_set_enabled = AsyncMock()
     mqtt.request_status = AsyncMock()
     c.mqtt = mqtt

@@ -5,7 +5,8 @@
     },
     "button": {
       "calibrate_blades": { "default": "mdi:tune" },
-      "reset_error": { "default": "mdi:alert-circle-check-outline" }
+      "reset_error": { "default": "mdi:alert-circle-check-outline" },
+      "perform_boot": { "default": "mdi:restart" }
     },
     "number": {
       "cutting_height": { "default": "mdi:arrow-up-down" }

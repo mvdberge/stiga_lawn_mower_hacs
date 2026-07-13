@@ -274,6 +274,20 @@ async def test_request_settings_and_schedule_use_correct_cmd_ids(
     )
 
 
+async def test_cmd_boot_uses_cmd_9(client: mc_mod.StigaMQTT) -> None:
+    fake = AsyncMock()
+    client._client = MagicMock(publish=fake)
+    client._connected = True
+
+    await client.cmd_boot(ROBOT_MAC)
+
+    args, kwargs = fake.call_args
+    assert args[0] == f"{ROBOT_MAC}/CMD_ROBOT"
+    # Wire frame observed from the STIGA.GO app: 08 09 18 09 (cmd_id + echo).
+    assert kwargs["payload"] == mm.encode_simple_request(mc.ROBOT_CMD_BOOT)
+    assert kwargs["payload"].hex() == "08091809"
+
+
 # ---------------------------------------------------------------- SSL context
 
 

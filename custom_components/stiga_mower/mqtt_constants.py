@@ -57,6 +57,13 @@ ROBOT_CMD_START = 1
 ROBOT_CMD_UNKNOWN_2 = 2
 ROBOT_CMD_GO_HOME = 4
 ROBOT_CMD_ZONE_SETTINGS_UPDATE = 7
+# Confirmed 2026-07-17 by capturing the STIGA.GO app pressing "Boot ausführen"
+# while the robot was in STARTUP_REQUIRED (see capture/capture_app_trace_boot.jsonl).
+# Wire frame is `08 09 18 09` — no params, only cmd_id + echo. The robot acks
+# result=1 and transitions STARTUP_REQUIRED (252) → CALIBRATION (18) → back to
+# WAITING_FOR_COMMAND (0). This kicks the mower out of the "undefined" startup
+# state so it accepts commands again.
+ROBOT_CMD_BOOT = 9
 ROBOT_CMD_SETTINGS_REQUEST = 17
 ROBOT_CMD_SETTINGS_UPDATE = 18
 ROBOT_CMD_SCHEDULING_SETTINGS_REQUEST = 19
@@ -78,6 +85,7 @@ ROBOT_CMD_NAMES: dict[int, str] = {
     ROBOT_CMD_UNKNOWN_2: "UNKNOWN_CMD_2",
     ROBOT_CMD_GO_HOME: "GO_HOME",
     ROBOT_CMD_ZONE_SETTINGS_UPDATE: "ZONE_SETTINGS_UPDATE",
+    ROBOT_CMD_BOOT: "BOOT",
     ROBOT_CMD_SETTINGS_REQUEST: "SETTINGS_REQUEST",
     ROBOT_CMD_SETTINGS_UPDATE: "SETTINGS_UPDATE",
     ROBOT_CMD_SCHEDULING_SETTINGS_REQUEST: "SCHEDULING_SETTINGS_REQUEST",

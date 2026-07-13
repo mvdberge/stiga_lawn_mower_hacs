@@ -128,7 +128,8 @@
     },
     "button": {
       "calibrate_blades": { "name": "Messer kalibrieren" },
-      "reset_error":      { "name": "Fehler zurücksetzen" }
+      "reset_error":      { "name": "Fehler zurücksetzen" },
+      "perform_boot":     { "name": "Boot ausführen" }
     },
     "calendar": {
       "mowing_schedule": { "name": "Mähplan" }

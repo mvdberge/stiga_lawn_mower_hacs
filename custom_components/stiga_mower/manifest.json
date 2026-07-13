@@ -10,5 +10,5 @@
   "issue_tracker": "https://github.com/mvdberge/stiga_lawn_mower_hacs/issues",
   "quality_scale": "gold",
   "requirements": ["aiomqtt>=2.3.0,<3.0"],
-  "version": "2.5.1"
+  "version": "2.6.0"
 }

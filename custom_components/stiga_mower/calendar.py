@@ -38,6 +38,7 @@ from homeassistant.util import dt as dt_util
 from . import StigaConfigEntry
 from .const import DOMAIN, split_firmware_version
 from .coordinator import StigaDataUpdateCoordinator
+from .mqtt_constants import SCHEDULE_SLOT_MINUTES, SCHEDULE_SLOTS_PER_DAY
 from .mqtt_messages import pack_schedule
 
 _LOGGER = logging.getLogger(__name__)
@@ -46,8 +47,14 @@ _LOGGER = logging.getLogger(__name__)
 # 48-slot schedule blob, so concurrent edits would race and lose windows.
 PARALLEL_UPDATES = 1
 
-SLOTS_PER_DAY = 48
-_SLOT_MINUTES = 30
+# Slot geometry has a single source of truth in mqtt_constants; alias the wire
+# constants to the short names this module (and tests) import. Assert the values
+# so any future divergence in the wire geometry fails fast instead of silently
+# changing calendar behaviour.
+SLOTS_PER_DAY = SCHEDULE_SLOTS_PER_DAY
+_SLOT_MINUTES = SCHEDULE_SLOT_MINUTES
+assert SLOTS_PER_DAY == 48
+assert _SLOT_MINUTES == 30
 _BYDAY_NAMES = ("MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
 

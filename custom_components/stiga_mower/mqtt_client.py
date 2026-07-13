@@ -46,6 +46,12 @@ _CERT_DIR = Path(__file__).parent / "certs"
 # (the dispatch hub never awaits them; coordinator does its own scheduling).
 StatusCallback = Callable[[str, dict[str, Any]], None]
 ConnectionCallback = Callable[[bool], None]
+FailureCallback = Callable[[str], None]
+
+# Consecutive failed connect attempts before we surface a repair issue. start()
+# is non-blocking, so a permanently-unreachable broker can only be observed from
+# inside the reconnect loop; a few retries first avoid flapping on brief blips.
+MQTT_CONNECT_FAILURES_BEFORE_REPAIR = 3
 
 
 class StigaMQTTError(Exception):
@@ -86,12 +92,15 @@ class StigaMQTT:
         self._on_notification: StatusCallback | None = None
         self._on_command_ack: StatusCallback | None = None
         self._on_connection_change: ConnectionCallback | None = None
+        self._on_connect_failed: FailureCallback | None = None
 
         # Runtime
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._client: aiomqtt.Client | None = None
         self._connected = False
+        # Consecutive failed connect attempts; reset whenever a session connects.
+        self._consecutive_connect_failures = 0
         # Monotonic timestamp of the moment the current session became
         # connected, or None while no session is up. Used by `_run_loop` to
         # tell a long-lived-then-dropped session apart from a reconnect storm.
@@ -116,6 +125,7 @@ class StigaMQTT:
         on_notification: StatusCallback | None = None,
         on_command_ack: StatusCallback | None = None,
         on_connection_change: ConnectionCallback | None = None,
+        on_connect_failed: FailureCallback | None = None,
     ) -> None:
         if on_status is not None:
             self._on_status = on_status
@@ -133,6 +143,8 @@ class StigaMQTT:
             self._on_command_ack = on_command_ack
         if on_connection_change is not None:
             self._on_connection_change = on_connection_change
+        if on_connect_failed is not None:
+            self._on_connect_failed = on_connect_failed
 
     @property
     def connected(self) -> bool:
@@ -198,8 +210,10 @@ class StigaMQTT:
                     err,
                     delay,
                 )
-            except Exception:
+                self._note_connect_failure(str(err))
+            except Exception as err:
                 _LOGGER.exception("Unexpected MQTT loop error")
+                self._note_connect_failure(str(err))
             finally:
                 # A session that stayed up long enough before dropping is not
                 # part of a reconnect storm — reset the backoff so a broker
@@ -258,6 +272,9 @@ class StigaMQTT:
         ) as client:
             self._client = client
             self._set_connected(True)
+            # A successful connect clears the failure streak that drives the
+            # repair issue.
+            self._consecutive_connect_failures = 0
             # Record when this session became connected so `_run_loop` can
             # reset the reconnect backoff after a long-lived session drops.
             self._connected_since = time.monotonic()
@@ -378,6 +395,17 @@ class StigaMQTT:
         if self._on_connection_change is not None:
             with contextlib.suppress(Exception):
                 self._on_connection_change(value)
+
+    def _note_connect_failure(self, error: str) -> None:
+        """Count a failed connect cycle and surface a repair issue once the
+        broker has been unreachable for several attempts in a row."""
+        self._consecutive_connect_failures += 1
+        if (
+            self._consecutive_connect_failures >= MQTT_CONNECT_FAILURES_BEFORE_REPAIR
+            and self._on_connect_failed is not None
+        ):
+            with contextlib.suppress(Exception):
+                self._on_connect_failed(error)
 
     # -------------------------------------------------------------- Dispatch
 

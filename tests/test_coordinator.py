@@ -226,6 +226,7 @@ def test_attach_mqtt_registers_all_handlers(coordinator: StigaDataUpdateCoordina
         "on_base_status",
         "on_base_version",
         "on_connection_change",
+        "on_connect_failed",
     }
     assert set(kwargs) == expected
     # Every handler points back at the coordinator
@@ -471,6 +472,22 @@ def test_connection_change_propagates_to_data(
     assert coordinator.data["mqtt_connected"] is True
     coordinator._on_mqtt_connected(False)
     assert coordinator.data["mqtt_connected"] is False
+
+
+def test_mqtt_connect_failed_creates_and_clears_repair_issue(
+    hass, coordinator: StigaDataUpdateCoordinator
+) -> None:
+    from homeassistant.helpers import issue_registry as ir
+
+    from custom_components.stiga_mower.const import DOMAIN
+
+    reg = ir.async_get(hass)
+    coordinator._on_mqtt_connect_failed("broker unreachable")
+    assert reg.async_get_issue(DOMAIN, "mqtt_connection_failed") is not None
+
+    # A live connection clears the repair issue.
+    coordinator._on_mqtt_connected(True)
+    assert reg.async_get_issue(DOMAIN, "mqtt_connection_failed") is None
 
 
 def test_build_data_meta_snapshot_isolated_from_later_mutation(

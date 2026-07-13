@@ -497,6 +497,53 @@ async def test_run_loop_unplanned_drop_announces_disconnect(
     assert client._connected is False
 
 
+async def test_run_loop_raises_repair_after_repeated_connect_failures(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    """on_connect_failed fires only once the failure streak crosses the repair
+    threshold — not on the first couple of failed connects."""
+    failures: list[str] = []
+    client.set_handlers(on_connect_failed=failures.append)
+    threshold = mc_mod.MQTT_CONNECT_FAILURES_BEFORE_REPAIR
+    calls = {"n": 0}
+
+    async def fake_session() -> bool:
+        calls["n"] += 1
+        if calls["n"] >= threshold:
+            client._stop_event.set()
+        raise mc_mod.aiomqtt.MqttError("connect failed")
+
+    async def fake_wait_for(coro: object, timeout: float) -> None:
+        coro.close()  # type: ignore[attr-defined]
+        raise TimeoutError
+
+    with (
+        patch.object(client, "_connect_session", side_effect=fake_session),
+        patch.object(mc_mod.asyncio, "wait_for", fake_wait_for),
+    ):
+        await client._run_loop()
+
+    assert calls["n"] == threshold
+    assert failures == ["connect failed"], "repair fires exactly once, at the threshold"
+
+
+async def test_note_connect_failure_threshold_and_reset(client: mc_mod.StigaMQTT) -> None:
+    calls: list[str] = []
+    client.set_handlers(on_connect_failed=calls.append)
+
+    for _ in range(mc_mod.MQTT_CONNECT_FAILURES_BEFORE_REPAIR - 1):
+        client._note_connect_failure("x")
+    assert calls == [], "below threshold stays silent"
+
+    client._note_connect_failure("boom")
+    assert calls == ["boom"], "threshold reached fires once"
+
+    # A successful connect resets the streak (mirrors _connect_session).
+    client._consecutive_connect_failures = 0
+    client._note_connect_failure("y")
+    assert calls == ["boom"], "after reset, one failure is again below threshold"
+
+
 async def test_stop_announces_disconnect(client: mc_mod.StigaMQTT) -> None:
     """stop() must always drive mqtt_connected to False, even after a clean
     refresh left the run loop reporting connected=True."""

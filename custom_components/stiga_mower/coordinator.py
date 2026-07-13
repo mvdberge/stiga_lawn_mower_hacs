@@ -23,6 +23,7 @@ from .mqtt_client import StigaMQTT
 _LOGGER = logging.getLogger(__name__)
 
 _ISSUE_CONNECTION = "connection_error"
+_ISSUE_MQTT = "mqtt_connection_failed"
 MAX_CONSECUTIVE_FAILURES = 3
 
 _UPDATE_TIMEOUT = UPDATE_INTERVAL - 5
@@ -158,6 +159,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             on_base_status=self._on_mqtt_base_status,
             on_base_version=self._on_mqtt_base_version,
             on_connection_change=self._on_mqtt_connected,
+            on_connect_failed=self._on_mqtt_connect_failed,
         )
 
     def _on_mqtt_status(self, mac: str, data: dict[str, Any]) -> None:
@@ -269,7 +271,29 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _on_mqtt_connected(self, connected: bool) -> None:
         self._mqtt_connected = connected
+        if connected:
+            # A live connection clears any prior "MQTT unavailable" repair issue.
+            ir.async_delete_issue(self.hass, DOMAIN, _ISSUE_MQTT)
         self._publish_update()
+
+    def _on_mqtt_connect_failed(self, error: str) -> None:
+        """Raise a repair issue after repeated MQTT connect failures.
+
+        ``StigaMQTT.start()`` is non-blocking, so a permanently-unreachable
+        broker can only be observed from inside the reconnect loop. The client
+        calls this once it has failed to connect several times in a row: live
+        status and remote control are unavailable, though REST polling keeps
+        the sensors updated.
+        """
+        ir.async_create_issue(
+            self.hass,
+            DOMAIN,
+            _ISSUE_MQTT,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key=_ISSUE_MQTT,
+            translation_placeholders={"error": error},
+        )
 
     def _publish_update(self) -> None:
         """Push the merged state to entity listeners.

@@ -57,22 +57,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: StigaConfigEntry) -> boo
     mqtt = _build_mqtt(hass, api, coordinator)
     if mqtt is not None:
         coordinator.attach_mqtt(mqtt)
-        try:
-            await mqtt.start()
-        except Exception as err:
-            from homeassistant.helpers import issue_registry as ir
-
-            _LOGGER.error("Failed to start STIGA MQTT client: %s; continuing REST-only", err)
-            ir.async_create_issue(
-                hass,
-                DOMAIN,
-                "mqtt_connection_failed",
-                is_fixable=False,
-                severity=ir.IssueSeverity.WARNING,
-                translation_key="mqtt_connection_failed",
-                translation_placeholders={"error": str(err)},
-            )
-            mqtt = None
+        # start() only spawns the background reconnect task and never blocks on
+        # the first connect, so a broker failure cannot surface here. A
+        # persistent failure is reported from inside the reconnect loop via the
+        # coordinator's `mqtt_connection_failed` repair issue instead.
+        await mqtt.start()
 
     entry.runtime_data = coordinator
     entry.async_on_unload(_make_unload(mqtt))

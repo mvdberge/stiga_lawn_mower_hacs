@@ -151,11 +151,15 @@ class StigaMQTT:
         self._stop_event.set()
         task = self._task
         self._task = None
-        if task is None:
-            return
-        task.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
-            await task
+        if task is not None:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+        # The run loop may exit via `break` right after a clean token refresh,
+        # where the finally block deliberately skips the disconnect. Announce
+        # it unconditionally here (idempotent when already False) so
+        # `mqtt_connected` never stays True after the client has stopped.
+        self._set_connected(False)
 
     # -------------------------------------------------------------- Run loop
 
@@ -168,8 +172,9 @@ class StigaMQTT:
         """
         delay = mc.MQTT_RECONNECT_DELAY
         while not self._stop_event.is_set():
+            clean_refresh = False
             try:
-                await self._connect_session()
+                clean_refresh = await self._connect_session()
                 # Session ended cleanly (token refresh) — reset backoff.
                 delay = mc.MQTT_RECONNECT_DELAY
             except asyncio.CancelledError:
@@ -183,9 +188,25 @@ class StigaMQTT:
             except Exception:
                 _LOGGER.exception("Unexpected MQTT loop error")
             finally:
-                self._set_connected(False)
+                # Only announce a disconnect for *unplanned* drops. A planned
+                # token-refresh cycle reconnects immediately in the next loop
+                # iteration, so flipping `mqtt_connected` to False here would
+                # publish a spurious False→True transition every ~50 minutes
+                # and flap the availability of every MQTT-derived entity. We
+                # keep `_connected` True across the refresh and only fall back
+                # to False if the immediate reconnect itself fails (that next
+                # iteration starts with clean_refresh=False, so the drop is
+                # announced then).
+                if not clean_refresh:
+                    self._set_connected(False)
             if self._stop_event.is_set():
                 break
+            if clean_refresh:
+                # Planned token-refresh cycle: reconnect immediately so the
+                # connection gap stays short. `_connected` intentionally stays
+                # True across this gap (see the finally above) to avoid a
+                # visible availability flap every ~50 minutes.
+                continue
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(
                     self._stop_event.wait(),
@@ -193,10 +214,16 @@ class StigaMQTT:
                 )
             delay = min(delay * 2, mc.MQTT_RECONNECT_DELAY_MAX)
 
-    async def _connect_session(self) -> None:
-        """One connect/subscribe/dispatch cycle, broken by token refresh."""
+    async def _connect_session(self) -> bool:
+        """One connect/subscribe/dispatch cycle, broken by token refresh.
+
+        Returns True when the session ended because the token-refresh timer
+        fired — a planned, healthy cycle — so the caller can reconnect
+        immediately instead of applying reconnect backoff.
+        """
         ssl_ctx = await self._hass.async_add_executor_job(self._build_ssl)
         token = await self._token_provider()
+        refreshed = False
 
         async with aiomqtt.Client(
             hostname=self.broker_host,
@@ -236,16 +263,18 @@ class StigaMQTT:
                     async with asyncio.timeout(mc.MQTT_TOKEN_REFRESH_INTERVAL):
                         async for message in client.messages:
                             if self._stop_event.is_set():
-                                return
+                                return False
                             self._dispatch(str(message.topic), bytes(message.payload))
                 except TimeoutError:
                     _LOGGER.debug("Token refresh due — cycling MQTT connection")
+                    refreshed = True
             finally:
                 if poll_task is not None:
                     poll_task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await poll_task
                 self._client = None
+        return refreshed
 
     async def _poll_loop(self) -> None:
         """Periodically request status from all robots while connected."""
@@ -429,7 +458,7 @@ class StigaMQTT:
         payload = mm.encode_simple_request(mc.ROBOT_CMD_RESET_ERROR)
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)
 
-    async def cmd_settings_update(self, mac: str, settings: dict) -> None:
+    async def cmd_settings_update(self, mac: str, settings: dict[str, Any]) -> None:
         """Send ROBOT_CMD_SETTINGS_UPDATE (18) with the given settings fields."""
         payload = mm.encode_settings_update(settings)
         await self._publish(mc.ROBOT_TOPIC_CMD_ROBOT.format(mac=mac), payload)

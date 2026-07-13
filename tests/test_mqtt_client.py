@@ -383,3 +383,65 @@ async def test_connect_session_requests_settings_and_schedule(
     # STATUS_REQUEST is also sent (poll_all_robots), so check subset membership
     assert settings_payload in published_payloads, "SETTINGS_REQUEST not sent at connect"
     assert schedule_payload in published_payloads, "SCHEDULING_SETTINGS_REQUEST not sent at connect"
+
+
+async def test_run_loop_clean_refresh_does_not_announce_disconnect(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    """A planned token-refresh cycle must not flip mqtt_connected to False.
+
+    Regression guard: the ~50 min token refresh used to publish a spurious
+    False→True transition that flapped every MQTT-derived entity's
+    availability. On a clean refresh the connection stays up (reconnect is
+    immediate), so no disconnect is announced.
+    """
+    seen: list[bool] = []
+    client.set_handlers(on_connection_change=seen.append)
+    client._connected = True  # simulate an established session
+
+    async def fake_session() -> bool:
+        # End the loop after this planned-refresh iteration.
+        client._stop_event.set()
+        return True
+
+    with patch.object(client, "_connect_session", side_effect=fake_session):
+        await client._run_loop()
+
+    assert seen == [], "clean token refresh must not announce a disconnect"
+    assert client._connected is True
+
+
+async def test_run_loop_unplanned_drop_announces_disconnect(
+    client: mc_mod.StigaMQTT,
+) -> None:
+    """An unexpected connection loss must still flip mqtt_connected to False."""
+    seen: list[bool] = []
+    client.set_handlers(on_connection_change=seen.append)
+    client._connected = True
+
+    async def fake_session() -> bool:
+        client._stop_event.set()
+        raise mc_mod.aiomqtt.MqttError("boom")
+
+    with patch.object(client, "_connect_session", side_effect=fake_session):
+        await client._run_loop()
+
+    assert seen == [False], "unplanned drop must announce a disconnect"
+    assert client._connected is False
+
+
+async def test_stop_announces_disconnect(client: mc_mod.StigaMQTT) -> None:
+    """stop() must always drive mqtt_connected to False, even after a clean
+    refresh left the run loop reporting connected=True."""
+    seen: list[bool] = []
+    client.set_handlers(on_connection_change=seen.append)
+    client._connected = True
+
+    async def _idle() -> None:
+        await client._stop_event.wait()
+
+    client._task = client._hass.async_create_background_task(_idle(), name="idle")
+    await client.stop()
+
+    assert seen == [False]
+    assert client._connected is False

@@ -1,5 +1,7 @@
 """Constants for the STIGA lawn mower integration."""
 
+from .mqtt_constants import ROBOT_STATUS_INFO_CODES
+
 DOMAIN = "stiga_mower"
 
 CONF_EMAIL = "email"
@@ -76,19 +78,10 @@ def split_firmware_version(raw: str | None) -> tuple[str | None, str | None, str
 
 # Error / status info codes. Cross-checked against
 # https://github.com/matthewgream/stiga-api (ROBOT_STATUS_INFO_CODES).
+# Human-readable firmware info/error codes, keyed by hex code. The canonical
+# table is ROBOT_STATUS_INFO_CODES in mqtt_constants (uppercase, matching the
+# wire naming); we derive the lowercase form used here as description keys so
+# the two tables can never drift out of sync.
 ERROR_INFO_CODES: dict[int, str] = {
-    0x0064: "low_battery",
-    0x0191: "blocked",
-    0x0195: "unknown_0195",
-    0x019E: "unknown_019e",
-    0x01A2: "lid_sensor",
-    0x01A9: "rain_sensor",
-    0x01B0: "lift_sensor",
-    0x01B1: "bump_sensor",
-    0x01B2: "slope_sensor",
-    0x01B3: "trapped",
-    0x01FA: "docking_error",
-    0x0389: "wheel_trouble",
-    0x03EF: "surface_too_slippery",
-    0x03F0: "out_of_perimeter",
+    code: name.lower() for code, name in ROBOT_STATUS_INFO_CODES.items()
 }

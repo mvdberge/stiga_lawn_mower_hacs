@@ -36,8 +36,8 @@ class StigaSelectDescription(SelectEntityDescription):
     """
 
     settings_key: str = ""
-    option_to_wire: dict = field(default_factory=dict)
-    wire_to_option: dict = field(default_factory=dict)
+    option_to_wire: dict[str, int] = field(default_factory=dict)
+    wire_to_option: dict[int, str] = field(default_factory=dict)
     # Wire value to assume when the key is missing from a populated
     # live_settings entry. STIGA's firmware uses proto3 encoding, which omits
     # scalar fields whose value equals the wire default (varint 0). Without
@@ -46,7 +46,7 @@ class StigaSelectDescription(SelectEntityDescription):
     wire_default: Any = None
 
 
-def _reverse(d: dict) -> dict:
+def _reverse(d: dict[str, int]) -> dict[int, str]:
     return {v: k for k, v in d.items()}
 
 
@@ -113,7 +113,7 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
         description: StigaSelectDescription,
     ) -> None:
         super().__init__(coordinator)
@@ -122,9 +122,9 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
         self._uuid = attrs.get("uuid", "")
         self._mac = attrs.get("mac_address", "")
         self._attr_unique_id = f"stiga_{self._uuid}_{description.key}"
-        self._attr_options = list(description.options)
+        self._attr_options = list(description.options or [])
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
                 return d.get("attributes") or {}
@@ -181,11 +181,15 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected or not self._mac:
             raise HomeAssistantError(
-                f"Cannot set {self.entity_description.key}: MQTT not connected"
+                translation_domain=DOMAIN, translation_key="mqtt_not_connected"
             )
         wire_value = self.entity_description.option_to_wire.get(option)
         if wire_value is None:
-            raise HomeAssistantError(f"Unknown option {option!r}")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_option",
+                translation_placeholders={"option": option},
+            )
         # cmd_settings_update is more strictly atomic than it appears: any
         # write omitting the rain/cutting submessages resets them on the
         # firmware to default — even when the write targets a different
@@ -196,7 +200,11 @@ class StigaSelect(CoordinatorEntity[StigaDataUpdateCoordinator], SelectEntity):
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
-            raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="set_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         # Optimistic update: the firmware omits enum fields at their proto3 wire
         # default (e.g. rain delay index 0 = 4 h) from SETTINGS responses. Apply
         # the selected value immediately so the entity reflects the command sent.
@@ -225,7 +233,7 @@ class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], Sel
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
     ) -> None:
         super().__init__(coordinator)
         attrs = device.get("attributes") or {}
@@ -234,7 +242,7 @@ class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], Sel
         self._attr_unique_id = f"stiga_{self._uuid}_schedule_mode"
         self._attr_options = [SCHEDULE_MODE_MANUAL, SCHEDULE_MODE_AUTO]
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
                 return d.get("attributes") or {}
@@ -288,26 +296,43 @@ class StigaScheduleModeSelect(CoordinatorEntity[StigaDataUpdateCoordinator], Sel
     async def async_select_option(self, option: str) -> None:
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected or not self._mac:
-            raise HomeAssistantError("Cannot set schedule mode: MQTT not connected")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="mqtt_not_connected"
+            )
         if option not in (SCHEDULE_MODE_MANUAL, SCHEDULE_MODE_AUTO):
-            raise HomeAssistantError(f"Unknown option {option!r}")
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_option",
+                translation_placeholders={"option": option},
+            )
         enabled = option == SCHEDULE_MODE_AUTO
         # SCHEDULING_SETTINGS_UPDATE is atomic on the firmware: sending field 1
         # without field 2 resets the schedule blob to empty, wiping all mowing
-        # times.  Always bundle field 2 — use the current live days if known,
-        # otherwise fall back to an empty blob (which is equivalent to the
-        # proto3 default but makes the intent explicit and keeps the command safe).
+        # times.  We must therefore bundle the *current* schedule blob.  If the
+        # mower has not reported its schedule yet (no SCHEDULING frame received),
+        # we have no days to re-send — sending an empty blob here would silently
+        # erase the user's weekly plan.  Refuse the toggle until the schedule is
+        # known instead.
         sched = self.coordinator.data.get("live_schedule", {}).get(self._mac, {})
-        blob = pack_schedule(sched.get("days") or [])
+        days = sched.get("days")
+        if days is None:
+            raise HomeAssistantError(
+                translation_domain=DOMAIN, translation_key="schedule_not_loaded"
+            )
+        blob = pack_schedule(days)
         try:
             await mqtt.cmd_schedule_set_enabled(self._mac, enabled, blob=blob)
         except Exception as err:
-            raise HomeAssistantError(f"Could not set schedule mode: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="schedule_mode_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         # Optimistic update: enabled=False is the proto3 default and gets omitted
         # from the firmware's SCHEDULING_SETTINGS response, so the coordinator
         # merge cannot detect a disable transition — apply immediately.
         self.coordinator.apply_live_schedule(self._mac, {"enabled": enabled})
 
 
-def _dev_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _dev_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))

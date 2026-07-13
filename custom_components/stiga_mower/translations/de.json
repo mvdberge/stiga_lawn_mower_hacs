@@ -3,6 +3,10 @@
     "connection_error": {
       "title": "Verbindung zur STIGA Cloud fehlgeschlagen",
       "description": "Home Assistant konnte die STIGA Cloud in {failures} aufeinanderfolgenden Update-Zyklen nicht erreichen.\n\nLetzter Fehler: {error}\n\nBitte überprüfe deine Internetverbindung und stelle sicher, dass der STIGA-Dienst erreichbar ist. Diese Meldung verschwindet automatisch, sobald die Verbindung wiederhergestellt ist."
+    },
+    "mqtt_connection_failed": {
+      "title": "STIGA Echtzeit-Verbindung nicht verfügbar",
+      "description": "Home Assistant konnte die Echtzeit-Verbindung (MQTT) zur STIGA Cloud nicht aufbauen. Live-Status und Fernsteuerung sind dadurch nicht verfügbar; das regelmäßige Abrufen der Sensordaten funktioniert weiterhin.\n\nLetzter Fehler: {error}\n\nDie Integration versucht es automatisch erneut; bei anhaltendem Problem die Integration neu laden."
     }
   },
   "config": {
@@ -95,7 +99,7 @@
     "switch": {
       "rain_sensor_enabled":    { "name": "Regensensor" },
       "anti_theft":             { "name": "Diebstahlschutz" },
-      "keyboard_lock":          { "name": "Tastensperre" },
+      "sleep_mode":             { "name": "Ruhezustand" },
       "push_notifications":     { "name": "Push-Benachrichtigungen" },
       "obstacle_notifications": { "name": "Hindernis-Benachrichtigungen" },
       "smart_cutting_height":   { "name": "Smarte Schnitthöhe" },
@@ -124,6 +128,41 @@
     },
     "calendar": {
       "mowing_schedule": { "name": "Mähplan" }
+    }
+  },
+  "exceptions": {
+    "mqtt_not_connected": {
+      "message": "Diese Steuerung ist nur bei Verbindung mit der STIGA Cloud verfügbar. Die Verbindung stellt sich meist innerhalb einer Minute wieder her — bitte dann erneut versuchen."
+    },
+    "set_failed": {
+      "message": "Einstellung konnte nicht übernommen werden: {error}"
+    },
+    "unknown_option": {
+      "message": "Unbekannte Option „{option}“."
+    },
+    "start_failed": {
+      "message": "Mähen konnte nicht gestartet werden: {error}"
+    },
+    "pause_failed": {
+      "message": "Mäher konnte nicht pausiert werden: {error}"
+    },
+    "dock_failed": {
+      "message": "Mäher konnte nicht zur Ladestation geschickt werden: {error}"
+    },
+    "action_failed": {
+      "message": "Aktion konnte nicht ausgeführt werden: {error}"
+    },
+    "schedule_mode_failed": {
+      "message": "Mähmodus konnte nicht geändert werden: {error}"
+    },
+    "schedule_not_loaded": {
+      "message": "Der Mähmodus kann noch nicht geändert werden, weil der Mäher seinen Zeitplan noch nicht gemeldet hat. Bitte gleich erneut versuchen."
+    },
+    "calendar_no_all_day": {
+      "message": "Ganztägige Einträge werden vom Mäher-Zeitplan nicht unterstützt. Bitte Start- und Endzeit angeben."
+    },
+    "calendar_unknown_uid": {
+      "message": "Dieser Zeitplan-Eintrag kann nicht gelöscht werden: unbekannte Event-ID „{uid}“."
     }
   }
 }

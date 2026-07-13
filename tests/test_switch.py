@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from ._entity_helpers import make_coordinator, switch
 
@@ -138,5 +139,52 @@ async def test_switch_rain_enable_without_delay_in_live_settings(hass) -> None:
 async def test_switch_raises_when_mqtt_disconnected(hass) -> None:
     c = make_coordinator(hass, live_settings={"rain_sensor_enabled": True}, mqtt_connected=False)
     s = switch(c, "rain_sensor_enabled")
-    with pytest.raises(Exception, match="MQTT not connected"):
+    with pytest.raises(HomeAssistantError) as err:
         await s.async_turn_off()
+    assert err.value.translation_key == "mqtt_not_connected"
+
+
+@pytest.mark.asyncio
+async def test_sleep_mode_switch_turn_on_bundles_uniform_and_unknown_11(hass) -> None:
+    """Putting the robot to sleep via the HA switch must include fields 9 and
+    11 from live_settings — they are bundled by the STIGA.GO app on every
+    SETTINGS_UPDATE (capture 2026-06-02) and proto3-atomicity means omitting
+    them resets the firmware-side value to default.
+    """
+    c = make_coordinator(
+        hass,
+        live_settings={
+            "sleep_mode": False,
+            "rain_sensor_enabled": False,
+            "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 30,
+            "zone_cutting_height_uniform": True,
+            "unknown_11": 105,
+        },
+    )
+    s = switch(c, "sleep_mode")
+    assert s.is_on is False
+    await s.async_turn_on()
+    c.mqtt.cmd_settings_update.assert_awaited_once_with(
+        "MAC1",
+        {
+            "sleep_mode": True,
+            "rain_sensor_enabled": False,
+            "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 30,
+            "zone_cutting_height_uniform": True,
+            "unknown_11": 105,
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_sleep_mode_switch_optimistic_update_after_turn_off(hass) -> None:
+    """After turn_off (wake) the switch must show False even though the
+    firmware's SETTINGS response omits sleep_mode (proto3 default = False).
+    """
+    c = make_coordinator(hass, live_settings={"sleep_mode": True})
+    s = switch(c, "sleep_mode")
+    assert s.is_on is True
+    await s.async_turn_off()
+    assert s.is_on is False

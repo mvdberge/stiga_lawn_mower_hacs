@@ -380,6 +380,62 @@ def test_build_settings_payload_skips_missing_live_keys(
     assert payload == {"long_exit": True}
 
 
+def test_build_settings_payload_bundles_sleep_uniform_and_unknown_11(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """The STIGA.GO app sends fields 2/9/11 alongside the rain+cutting group
+    on every SETTINGS_UPDATE (capture 2026-06-02). Treat them as atomic too —
+    omitting any of them from an outbound write would reset the firmware-side
+    value to proto3 default and likely break behaviour we don't yet model.
+    """
+    coordinator._on_mqtt_settings(
+        "MAC1",
+        {
+            "rain_sensor_enabled": False,
+            "sleep_mode": False,
+            "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 30,
+            "zone_cutting_height_uniform": True,
+            "unknown_11": 105,
+        },
+    )
+
+    payload = coordinator.build_settings_payload("MAC1", {"long_exit": True})
+    assert payload == {
+        "long_exit": True,
+        "rain_sensor_enabled": False,
+        "sleep_mode": False,
+        "zone_cutting_height_enabled": True,
+        "cutting_height_mm": 30,
+        "zone_cutting_height_uniform": True,
+        "unknown_11": 105,
+    }
+
+
+def test_build_settings_payload_sleep_toggle_carries_unknown_11(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """A sleep_mode toggle from HA must include the opaque unknown_11 value
+    the firmware sent us — otherwise field 11 gets wiped on every sleep/wake
+    transition.
+    """
+    coordinator._on_mqtt_settings(
+        "MAC1",
+        {
+            "rain_sensor_enabled": False,
+            "zone_cutting_height_enabled": True,
+            "cutting_height_mm": 30,
+            "zone_cutting_height_uniform": True,
+            "unknown_11": 105,
+        },
+    )
+
+    payload = coordinator.build_settings_payload("MAC1", {"sleep_mode": True})
+    assert payload["sleep_mode"] is True
+    assert payload["zone_cutting_height_uniform"] is True
+    assert payload["unknown_11"] == 105
+
+
 def test_schedule_push_lands_in_live_schedule(
     coordinator: StigaDataUpdateCoordinator,
 ) -> None:
@@ -576,6 +632,41 @@ async def test_consecutive_failures_eventually_marks_data_stale(
     assert rest_coordinator._consecutive_failures == 1
 
 
+def test_has_data_fresh_tracks_valid_telemetry(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """A valid status frame records the has_data timestamp; a fresh device
+    stays fresh, an unknown one is not."""
+    coordinator._on_mqtt_status("MAC1", {"status_type": "MOWING", "battery_level": 65})
+    assert coordinator.has_data_fresh("u1") is True
+    assert coordinator.has_data_fresh("unknown-uuid") is False
+
+
+def test_has_data_fresh_debounces_transient_false(
+    coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """A single `hasData:false` build must not immediately drop freshness.
+
+    This is what keeps every entity available across the intermittent
+    `hasData:false` frames the STIGA cloud emits, while still going stale
+    after _STALE_DATA_THRESHOLD of genuinely absent data.
+    """
+    # Seed a valid reading, then simulate a hasData:false REST build.
+    coordinator._on_mqtt_status("MAC1", {"status_type": "MOWING"})
+    assert coordinator.has_data_fresh("u1") is True
+
+    coordinator.async_set_updated_data(
+        coordinator._build_data(rest_statuses={"u1": {"has_data": False}})
+    )
+    # The false frame did not refresh the timestamp, but the recent valid one
+    # still keeps the device fresh.
+    assert coordinator.has_data_fresh("u1") is True
+
+    # Backdate past the grace window → now genuinely stale.
+    coordinator._last_has_data["u1"] -= _STALE_DATA_THRESHOLD * 2
+    assert coordinator.has_data_fresh("u1") is False
+
+
 async def test_consecutive_failures_raises_issue_after_threshold(
     rest_coordinator: StigaDataUpdateCoordinator,
 ) -> None:
@@ -612,6 +703,30 @@ async def test_partial_status_failure_still_counts_as_success(
     assert c._last_rest_success is not None
     assert c._consecutive_failures == 0
     assert c.rest_data_fresh is True
+
+
+async def test_empty_status_payload_keeps_cached_and_counts_as_failure(
+    rest_coordinator: StigaDataUpdateCoordinator,
+) -> None:
+    """A HTTP-200-but-unparseable status ({}) must not wipe the good cache.
+
+    Regression: during cloud instability the server returns a degraded body
+    that parses to {}. Previously this counted as a successful poll and
+    overwrote the cached status with {}, flipping every entity to
+    "unavailable" for one cycle. It must instead behave like a failed fetch:
+    keep the last good snapshot and not bump the freshness timestamp.
+    """
+    await rest_coordinator.async_refresh()
+    baseline_ts = rest_coordinator._last_rest_success
+    assert rest_coordinator.data["statuses"]["u1"]["battery_level"] == 50
+
+    rest_coordinator.api.get_device_status = AsyncMock(return_value={})
+    await rest_coordinator.async_refresh()
+
+    # Cached snapshot preserved, poll counted as failed.
+    assert rest_coordinator.data["statuses"]["u1"]["battery_level"] == 50
+    assert rest_coordinator._last_rest_success == baseline_ts
+    assert rest_coordinator._consecutive_failures == 1
 
 
 # ---------------------------------------------------------------- Firmware registry sync

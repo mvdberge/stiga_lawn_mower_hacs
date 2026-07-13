@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.stiga_mower.mqtt_messages import pack_schedule
 
@@ -105,8 +106,9 @@ async def test_select_rain_delay_optimistic_update_to_4h(hass) -> None:
 async def test_select_raises_on_unknown_option(hass) -> None:
     c = make_coordinator(hass, live_settings={"rain_sensor_delay_h": 8})
     s = select(c, "rain_sensor_delay")
-    with pytest.raises(Exception, match="Unknown option"):
+    with pytest.raises(HomeAssistantError) as err:
         await s.async_select_option("spirograph")
+    assert err.value.translation_key == "unknown_option"
 
 
 # ---------------------------------------------------------------- schedule_mode select
@@ -167,8 +169,8 @@ def test_schedule_mode_has_no_entity_category(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_mode_select_auto_sends_true(hass) -> None:
-    # No days in live_schedule → always bundles an empty blob (never sends blob=None)
-    c = make_coordinator(hass, live_schedule={"enabled": False})
+    # Loaded-but-empty schedule (days=[]) → safely bundles an empty blob.
+    c = make_coordinator(hass, live_schedule={"enabled": False, "days": []})
     s = schedule_mode_select(c)
     await s.async_select_option("auto")
     c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", True, blob=pack_schedule([]))
@@ -176,11 +178,24 @@ async def test_schedule_mode_select_auto_sends_true(hass) -> None:
 
 @pytest.mark.asyncio
 async def test_schedule_mode_select_manual_sends_false(hass) -> None:
-    # No days in live_schedule → always bundles an empty blob (never sends blob=None)
-    c = make_coordinator(hass, live_schedule={"enabled": True})
+    # Loaded-but-empty schedule (days=[]) → safely bundles an empty blob.
+    c = make_coordinator(hass, live_schedule={"enabled": True, "days": []})
     s = schedule_mode_select(c)
     await s.async_select_option("manual")
     c.mqtt.cmd_schedule_set_enabled.assert_awaited_once_with("MAC1", False, blob=pack_schedule([]))
+
+
+@pytest.mark.asyncio
+async def test_schedule_mode_raises_when_schedule_not_loaded(hass) -> None:
+    """Toggling the mode before the mower has reported its schedule must NOT
+    send an empty blob — cmd 20 is atomic and that would wipe the firmware-side
+    weekly plan. The entity refuses until `days` is known."""
+    c = make_coordinator(hass, live_schedule={"enabled": True})  # no "days" key yet
+    s = schedule_mode_select(c)
+    with pytest.raises(HomeAssistantError) as err:
+        await s.async_select_option("auto")
+    assert err.value.translation_key == "schedule_not_loaded"
+    c.mqtt.cmd_schedule_set_enabled.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -214,16 +229,18 @@ async def test_schedule_mode_select_manual_bundles_blob(hass) -> None:
 async def test_schedule_mode_unknown_option_raises(hass) -> None:
     c = make_coordinator(hass, live_schedule={"enabled": True})
     s = schedule_mode_select(c)
-    with pytest.raises(Exception, match="Unknown option"):
+    with pytest.raises(HomeAssistantError) as err:
         await s.async_select_option("disco")
+    assert err.value.translation_key == "unknown_option"
 
 
 @pytest.mark.asyncio
 async def test_schedule_mode_raises_when_mqtt_disconnected(hass) -> None:
     c = make_coordinator(hass, live_schedule={"enabled": True}, mqtt_connected=False)
     s = schedule_mode_select(c)
-    with pytest.raises(Exception, match="MQTT not connected"):
+    with pytest.raises(HomeAssistantError) as err:
         await s.async_select_option("auto")
+    assert err.value.translation_key == "mqtt_not_connected"
 
 
 @pytest.mark.asyncio
@@ -234,7 +251,7 @@ async def test_schedule_mode_optimistic_update_on_disable(hass) -> None:
     SCHEDULING_SETTINGS response; the coordinator merge cannot detect the
     transition — apply_live_schedule must update live_schedule immediately.
     """
-    c = make_coordinator(hass, live_schedule={"enabled": True})
+    c = make_coordinator(hass, live_schedule={"enabled": True, "days": []})
     s = schedule_mode_select(c)
     assert s.current_option == "auto"
     await s.async_select_option("manual")

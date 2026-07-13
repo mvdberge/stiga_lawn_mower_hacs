@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -49,7 +50,7 @@ class StigaBinarySensorDescription(BinarySensorEntityDescription):
 # ---------------------------------------------------------------------------
 
 
-def _info_sensor_value(status: dict, sensor_name: str) -> bool:
+def _info_sensor_value(status: dict[str, Any], sensor_name: str) -> bool:
     """Return True when the mower's current info_sensor matches `sensor_name`."""
     return status.get("info_sensor") == sensor_name
 
@@ -172,7 +173,7 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
         description: StigaBinarySensorDescription,
     ) -> None:
         super().__init__(coordinator)
@@ -180,7 +181,7 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
         self._uuid = _dev_uuid(device)
         self._attr_unique_id = f"stiga_{self._uuid}_{description.key}"
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
                 return d.get("attributes") or {}
@@ -217,7 +218,7 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
         status = data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
-        if status.get("has_data") is False:
+        if status.get("has_data") is False and not self.coordinator.has_data_fresh(self._uuid):
             return False
         # MQTT frames also keep these sensors fresh (battery_level, is_docked,
         # battery_charging, error_code are all populated by _merge_live_into_status).
@@ -227,7 +228,7 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
     def is_on(self) -> bool | None:
         desc = self.entity_description
         if desc.source == "mqtt":
-            return self.coordinator.data.get("mqtt_connected", False)
+            return bool(self.coordinator.data.get("mqtt_connected", False))
 
         status = self.coordinator.data.get("statuses", {}).get(self._uuid, {})
 
@@ -246,5 +247,5 @@ class StigaBinarySensor(CoordinatorEntity[StigaDataUpdateCoordinator], BinarySen
         return bool(raw)
 
 
-def _dev_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _dev_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))

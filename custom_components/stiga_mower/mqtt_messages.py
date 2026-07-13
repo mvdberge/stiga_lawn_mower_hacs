@@ -161,8 +161,15 @@ def decode_settings(payload: bytes) -> dict[str, Any]:
         if rain is not None:
             out["rain_sensor_delay_h"] = mc.RAIN_DELAY_INDEX_TO_HOURS.get(rain.get(2, 0))
 
+    # Field 2 toggles the firmware's sleep state (1 = sleeping, omitted = awake).
+    # Capture 2026-06-02: pressing "Sleep" in the STIGA.GO app sends field 2 = 1,
+    # "Wake" sends field 2 = 0. status_type transitions to 54 (sleeping) ~10 s
+    # after sleep is set and back to 4 (docking) after wake. The same field was
+    # historically labeled `keyboard_lock` in this codebase and in
+    # matthewgream/stiga-api (both inherited the wrong name from early
+    # reverse-engineering — neither had wire-level proof).
     if raw.get(2) is not None:
-        out["keyboard_lock"] = bool(raw[2])
+        out["sleep_mode"] = bool(raw[2])
 
     cutting = raw.get(4) if isinstance(raw.get(4), dict) else None
     if cutting is not None:
@@ -179,6 +186,17 @@ def decode_settings(payload: bytes) -> dict[str, Any]:
     long_exit = raw.get(8) if isinstance(raw.get(8), dict) else None
     if long_exit is not None and long_exit.get(1) is not None:
         out["long_exit"] = bool(long_exit[1])
+
+    # Field 9 (zone_cutting_height_uniform, bool) and field 11 (firmware-internal
+    # constant, opaque varint) are not user-facing entities, but the STIGA.GO app
+    # bundles them with every SETTINGS_UPDATE write. Per proto3 atomicity (see
+    # CLAUDE.md), omitting them from outbound writes resets them firmware-side
+    # to default. We decode them here so build_settings_payload can backfill the
+    # current value into every outbound payload.
+    if raw.get(9) is not None:
+        out["zone_cutting_height_uniform"] = bool(raw[9])
+    if raw.get(11) is not None:
+        out["unknown_11"] = int(raw[11])
 
     push = raw.get(14) if isinstance(raw.get(14), dict) else None
     if push is not None and push.get(1) is not None:
@@ -223,7 +241,10 @@ def decode_schedule(payload: bytes) -> dict[str, Any]:
                           where each slot index maps to ``slot * 30`` minutes.
     """
     try:
-        raw = pb.decode(payload)
+        # Field 2 is the opaque schedule bitmap blob. Decode it as raw bytes so
+        # the codec's str/submessage heuristic cannot mis-read a blob that
+        # coincidentally parses as valid protobuf (which would drop "days").
+        raw = pb.decode(payload, raw_fields={2})
     except pb.ProtobufError as err:
         _LOGGER.warning("SCHEDULE frame decode failed: %s", err)
         return {}
@@ -431,7 +452,15 @@ def decode_base_version(payload: bytes) -> dict[str, Any]:
 
 
 def _version_from_bytes(value: Any) -> str | None:
-    """Render a length-delimited VERSION-frame field as dotted decimal."""
+    """Render a length-delimited VERSION-frame field as dotted decimal.
+
+    The generic codec decodes any LEN payload whose bytes are printable UTF-8
+    into a ``str``, so a version whose component bytes all fall in the ASCII
+    range (common for build numbers) arrives here as a string. Recover the
+    original bytes via latin-1 before rendering so those fields are not lost.
+    """
+    if isinstance(value, str):
+        value = value.encode("latin-1")
     if isinstance(value, (bytes, bytearray)) and value:
         return ".".join(str(b) for b in value)
     return None
@@ -447,10 +476,11 @@ def decode_notification(payload: bytes) -> dict[str, Any]:
     direct passthrough of the cloud's push-notification record.
     """
     try:
-        return json.loads(payload)
+        data = json.loads(payload)
     except (ValueError, UnicodeDecodeError) as err:
         _LOGGER.warning("JSON_NOTIFICATION decode failed: %s", err)
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 # ---------------------------------------------------------------- Command ACK
@@ -522,21 +552,25 @@ def encode_settings_update(settings: dict[str, Any]) -> bytes:
     """Build a SETTINGS_UPDATE (cmd 18) payload from human-readable settings keys.
 
     Supported keys (mirroring decode_settings output):
-      - ``rain_sensor_enabled``       (bool) → field 1.1
-      - ``rain_sensor_delay_h``       (int hours: 4/8/12) → field 1.2
-      - ``keyboard_lock``             (bool) → field 2
-      - ``zone_cutting_height_enabled``(bool) → field 4.1
-      - ``cutting_height_mm``         (int mm: 20–60 step 5) → field 4.2
-      - ``anti_theft``                (bool) → field 6
-      - ``smart_cutting_height``      (bool) → field 7
-      - ``long_exit``                 (bool) → field 8.1
-      - ``push_notifications``        (bool) → field 14.1
-      - ``obstacle_notifications``    (bool) → field 15.1
+      - ``rain_sensor_enabled``         (bool) → field 1.1
+      - ``rain_sensor_delay_h``         (int hours: 4/8/12) → field 1.2
+      - ``sleep_mode``                  (bool) → field 2
+      - ``zone_cutting_height_enabled`` (bool) → field 4.1
+      - ``cutting_height_mm``           (int mm: 20–60 step 5) → field 4.2
+      - ``anti_theft``                  (bool) → field 6
+      - ``smart_cutting_height``        (bool) → field 7
+      - ``long_exit``                   (bool) → field 8.1
+      - ``zone_cutting_height_uniform`` (bool) → field 9
+      - ``unknown_11``                  (int, opaque) → field 11
+      - ``push_notifications``          (bool) → field 14.1
+      - ``obstacle_notifications``      (bool) → field 15.1
 
     Rain sensor group (fields 1.1 + 1.2) and the cutting sub-message (field 4)
     behave as atomic writes on the firmware: omitting a sub-field resets it to
-    its wire default. Callers are responsible for including all currently-active
-    fields in the group (read from ``live_settings``) before calling this helper.
+    its wire default. Fields 9 and 11 are bundled by the STIGA.GO app on every
+    outbound write (capture 2026-06-02) and presumed atomic for the same
+    reason. Callers are responsible for including all currently-active fields
+    in the group (read from ``live_settings``) before calling this helper.
     """
     params: dict[int, Any] = {}
 
@@ -550,7 +584,7 @@ def encode_settings_update(settings: dict[str, Any]) -> bytes:
     if rain:
         params[1] = rain
 
-    if (v := settings.get("keyboard_lock")) is not None:
+    if (v := settings.get("sleep_mode")) is not None:
         params[2] = int(bool(v))
 
     cutting: dict[int, Any] = {}
@@ -573,6 +607,11 @@ def encode_settings_update(settings: dict[str, Any]) -> bytes:
         long_exit[1] = int(bool(v))
     if long_exit:
         params[8] = long_exit
+
+    if (v := settings.get("zone_cutting_height_uniform")) is not None:
+        params[9] = int(bool(v))
+    if (v := settings.get("unknown_11")) is not None:
+        params[11] = int(v)
 
     push: dict[int, Any] = {}
     if (v := settings.get("push_notifications")) is not None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from ._entity_helpers import make_coordinator, number
 
@@ -68,5 +69,6 @@ async def test_number_cutting_height_optimistic_update(hass) -> None:
 async def test_number_raises_when_mqtt_disconnected(hass) -> None:
     c = make_coordinator(hass, live_settings={"cutting_height_mm": 40}, mqtt_connected=False)
     n = number(c)
-    with pytest.raises(Exception, match="MQTT not connected"):
+    with pytest.raises(HomeAssistantError) as err:
         await n.async_set_native_value(45)
+    assert err.value.translation_key == "mqtt_not_connected"

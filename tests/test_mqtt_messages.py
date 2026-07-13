@@ -165,12 +165,13 @@ def test_decode_settings_full_frame() -> None:
     payload = pb.encode(
         {
             1: {1: 1, 2: 1},  # rain sensor on, 8h delay
-            2: 0,  # keyboard lock off
+            2: 1,  # sleep mode active (robot asleep)
             4: {1: 1, 2: 5},  # zone height enabled, 45 mm
             6: 1,  # anti-theft on
             7: 0,  # smart cut height off
             8: {1: 1, 3: 2},  # long exit on, mode field 3 (decoded-only, ignored)
-            9: 1,  # uniform height (decoded-only, ignored)
+            9: 1,  # zone cutting height uniform
+            11: 105,  # firmware-internal opaque varint (bundle-back unchanged)
             14: {1: 1},  # push notifications on
             15: {1: 0},  # obstacle notifications off
         }
@@ -179,15 +180,29 @@ def test_decode_settings_full_frame() -> None:
     assert out == {
         "rain_sensor_enabled": True,
         "rain_sensor_delay_h": 8,
-        "keyboard_lock": False,
+        "sleep_mode": True,
         "zone_cutting_height_enabled": True,
         "cutting_height_mm": 45,
         "anti_theft": True,
         "smart_cutting_height": False,
         "long_exit": True,
+        "zone_cutting_height_uniform": True,
+        "unknown_11": 105,
         "push_notifications": True,
         "obstacle_notifications": False,
     }
+
+
+def test_decode_settings_sleep_mode_absent_when_field_omitted() -> None:
+    """Proto3 default omission: field 2 missing from the frame means the
+    robot is awake. decode_settings must not surface ``sleep_mode`` in that
+    case — otherwise the coordinator would write False into live_settings
+    even when the firmware never confirmed it. See CLAUDE.md guidance on
+    live_settings vs wire_default handling.
+    """
+    payload = pb.encode({1: {1: 1}, 4: {1: 1, 2: 5}})  # rain on, cutting set
+    out = mm.decode_settings(payload)
+    assert "sleep_mode" not in out
 
 
 def test_decode_settings_rain_delay_4h_via_empty_submsg() -> None:
@@ -463,6 +478,28 @@ def test_decode_base_version_empty_payload() -> None:
     assert mm.decode_base_version(b"") == {}
 
 
+def test_decode_base_version_recovers_ascii_only_field() -> None:
+    """When every component byte falls in printable ASCII the generic codec
+    decodes the field to a str; the renderer must still recover the dotted
+    decimal value instead of dropping it."""
+    # Bytes 50, 46, 53 are all printable ('2', '.', '5') → codec yields a str.
+    payload = pb.encode({2: bytes([50, 46, 53])})
+    out = mm.decode_base_version(payload)
+    assert out["firmware"] == "50.46.53"
+
+
+def test_decode_schedule_blob_parsing_as_protobuf_still_yields_days() -> None:
+    """A schedule blob whose bytes coincidentally form valid protobuf must be
+    read as the raw bitmap, not mis-decoded into a nested message (which would
+    drop ``days`` entirely)."""
+    # b"\x08\x05" is valid wire format (field 1 = 5) yet is just two bitmap
+    # bytes for day 0 here.
+    payload = pb.encode({1: 1, 2: b"\x08\x05"})
+    out = mm.decode_schedule(payload)
+    assert "days" in out
+    assert len(out["days"]) == 7
+
+
 # ---------------------------------------------------------------- decode_notification
 
 
@@ -623,12 +660,39 @@ def test_encode_settings_update_multiple_fields() -> None:
     payload = mm.encode_settings_update(
         {
             "rain_sensor_enabled": True,
-            "keyboard_lock": False,
+            "sleep_mode": False,
             "cutting_height_mm": 30,
         }
     )
     decoded = pb.decode(payload)
     params = decoded[2]
     assert params[1][1] == 1  # rain on
-    assert params[2] == 0  # keyboard_lock off
+    assert params[2] == 0  # sleep_mode off (robot awake)
     assert params[4][2] == 2  # 30mm -> index 2
+
+
+def test_encode_settings_update_sleep_mode_on() -> None:
+    """Capture 2026-06-02: pressing "Sleep" in the STIGA.GO app sets field 2=1.
+    The encoder must produce exactly that bit on the wire.
+    """
+    payload = mm.encode_settings_update({"sleep_mode": True})
+    decoded = pb.decode(payload)
+    assert decoded[2][2] == 1
+
+
+def test_encode_settings_update_includes_uniform_and_unknown_11() -> None:
+    """Fields 9 and 11 are presumed atomic (bundled by the STIGA.GO app on
+    every write). The encoder must emit them when present in the payload.
+    """
+    payload = mm.encode_settings_update(
+        {
+            "sleep_mode": True,
+            "zone_cutting_height_uniform": True,
+            "unknown_11": 105,
+        }
+    )
+    decoded = pb.decode(payload)
+    params = decoded[2]
+    assert params[2] == 1
+    assert params[9] == 1
+    assert params[11] == 105

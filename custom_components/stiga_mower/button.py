@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 from homeassistant.components.button import ButtonEntity, ButtonEntityDescription
 from homeassistant.const import EntityCategory
@@ -93,7 +94,7 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
         description: StigaButtonDescription,
     ) -> None:
         super().__init__(coordinator)
@@ -103,7 +104,7 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
         self._mac = attrs.get("mac_address", "")
         self._attr_unique_id = f"stiga_{self._uuid}_{description.key}"
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
                 return d.get("attributes") or {}
@@ -133,7 +134,7 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected or not self._mac:
             raise HomeAssistantError(
-                f"Cannot press {self.entity_description.key}: MQTT not connected"
+                translation_domain=DOMAIN, translation_key="mqtt_not_connected"
             )
         action = self.entity_description.action
         try:
@@ -143,9 +144,11 @@ class StigaButton(CoordinatorEntity[StigaDataUpdateCoordinator], ButtonEntity):
                 await mqtt.cmd_reset_error(self._mac)
         except Exception as err:
             raise HomeAssistantError(
-                f"Could not execute {self.entity_description.key}: {err}"
+                translation_domain=DOMAIN,
+                translation_key="action_failed",
+                translation_placeholders={"error": str(err)},
             ) from err
 
 
-def _dev_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _dev_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 from homeassistant.components.lawn_mower import (
     LawnMowerActivity,
@@ -117,7 +117,7 @@ MOWING_MODE_TO_ACTIVITY: dict[Any, LawnMowerActivity] = {
 
 # Modes that are known but ambiguous without a stronger signal – suppress the
 # "unknown mode" warning for these.
-_AMBIGUOUS_MODES: frozenset = frozenset({"SCHEDULED", "IDLE"})
+_AMBIGUOUS_MODES: frozenset[str] = frozenset({"SCHEDULED", "IDLE"})
 
 MOWING_MODE_LABELS: dict[Any, str] = {
     "WORKING": "Mowing",
@@ -183,7 +183,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
     ) -> None:
         super().__init__(coordinator)
         self._uuid = _dev_uuid(device)
@@ -191,7 +191,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
 
     # ------------------------------------------------------------------ Device
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         """Latest device attributes from the coordinator (refreshed each cycle)."""
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
@@ -221,8 +221,11 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
     # ------------------------------------------------------------------ State
 
     @property
-    def _status(self) -> dict:
-        return self.coordinator.data.get("statuses", {}).get(self._uuid, {})
+    def _status(self) -> dict[str, Any]:
+        return cast(
+            "dict[str, Any]",
+            self.coordinator.data.get("statuses", {}).get(self._uuid, {}),
+        )
 
     @property
     def available(self) -> bool:
@@ -235,7 +238,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         # STIGA signals "no fresh telemetry" via hasData == false. Treat
         # missing/None as available for backwards compatibility with older
         # device types that don't expose this flag.
-        if status.get("has_data") is False:
+        if status.get("has_data") is False and not self.coordinator.has_data_fresh(self._uuid):
             return False
         # MQTT frames set has_data=True and keep the mower entity available
         # even when REST polling is temporarily failing.
@@ -296,7 +299,7 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
         label = (
             entry[1]
             if entry is not None
-            else MOWING_MODE_LABELS.get(mode, str(mode) if mode else "—")
+            else MOWING_MODE_LABELS.get(mode, str(mode) if mode is not None else "—")
         )
         attrs: dict[str, Any] = {
             ATTR_MOWING_MODE_RAW: mode,
@@ -347,7 +350,11 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
             await self.coordinator.api.start_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            raise HomeAssistantError(f"Could not start mowing: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="start_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
     async def async_pause(self) -> None:
         """Pause the mower in place via MQTT STOP=0.
@@ -363,13 +370,21 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
                 await mqtt.cmd_stop(mac)
                 return
             except Exception as err:
-                raise HomeAssistantError(f"Could not pause mower: {err}") from err
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="pause_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
         # MQTT not available — stop via REST (sends home, best we can do).
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            raise HomeAssistantError(f"Could not pause mower: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="pause_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
     async def async_dock(self) -> None:
         """Send the robot back to the charging dock."""
@@ -380,20 +395,28 @@ class StigaLawnMower(CoordinatorEntity[StigaDataUpdateCoordinator], LawnMowerEnt
                 await mqtt.cmd_go_home(mac)
                 return
             except Exception as err:
-                raise HomeAssistantError(f"Could not send dock command: {err}") from err
+                raise HomeAssistantError(
+                    translation_domain=DOMAIN,
+                    translation_key="dock_failed",
+                    translation_placeholders={"error": str(err)},
+                ) from err
         # Fallback to REST endsession.
         try:
             await self.coordinator.api.stop_mowing(self._uuid)
             await self.coordinator.async_request_refresh()
         except Exception as err:
-            raise HomeAssistantError(f"Could not send dock command: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="dock_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
 
 
-def _dev_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _dev_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))
 
 
-def _parsed_settings(device_attrs: dict) -> dict:
+def _parsed_settings(device_attrs: dict[str, Any]) -> dict[str, Any]:
     """Extract attributes.settings[0].parsedSettings safely from /api/garage."""
     settings = device_attrs.get("settings")
     if isinstance(settings, list) and settings:

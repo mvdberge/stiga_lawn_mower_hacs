@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from homeassistant.exceptions import HomeAssistantError
 
 from ._entity_helpers import button, make_coordinator
 
@@ -27,5 +28,6 @@ async def test_button_reset_error(hass) -> None:
 async def test_button_raises_when_mqtt_disconnected(hass) -> None:
     c = make_coordinator(hass, mqtt_connected=False)
     b = button(c, "reset_error")
-    with pytest.raises(Exception, match="MQTT not connected"):
+    with pytest.raises(HomeAssistantError) as err:
         await b.async_press()
+    assert err.value.translation_key == "mqtt_not_connected"

@@ -3,6 +3,10 @@
     "connection_error": {
       "title": "STIGA cloud connection failed",
       "description": "Home Assistant has been unable to reach the STIGA cloud for {failures} consecutive update cycles.\n\nLast error: {error}\n\nPlease check your internet connection and verify that the STIGA service is available. This notice will disappear automatically once the connection is restored."
+    },
+    "mqtt_connection_failed": {
+      "title": "STIGA real-time connection unavailable",
+      "description": "Home Assistant could not establish the real-time (MQTT) connection to the STIGA cloud, so live status and remote controls are unavailable. Periodic sensor polling still works.\n\nLast error: {error}\n\nThe integration keeps retrying automatically; reload it if the problem persists."
     }
   },
   "config": {
@@ -98,7 +102,7 @@
     "switch": {
       "rain_sensor_enabled":    { "name": "Rain Sensor" },
       "anti_theft":             { "name": "Anti-Theft" },
-      "keyboard_lock":          { "name": "Keyboard Lock" },
+      "sleep_mode":             { "name": "Hibernation" },
       "push_notifications":     { "name": "Push Notifications" },
       "obstacle_notifications": { "name": "Obstacle Notifications" },
       "smart_cutting_height":   { "name": "Smart Cutting Height" },
@@ -127,6 +131,41 @@
     },
     "calendar": {
       "mowing_schedule": { "name": "Mowing Schedule" }
+    }
+  },
+  "exceptions": {
+    "mqtt_not_connected": {
+      "message": "This control is only available while connected to the STIGA cloud. The connection usually recovers within a minute — please try again then."
+    },
+    "set_failed": {
+      "message": "Could not apply the setting: {error}"
+    },
+    "unknown_option": {
+      "message": "Unknown option \"{option}\"."
+    },
+    "start_failed": {
+      "message": "Could not start mowing: {error}"
+    },
+    "pause_failed": {
+      "message": "Could not pause the mower: {error}"
+    },
+    "dock_failed": {
+      "message": "Could not send the mower to the dock: {error}"
+    },
+    "action_failed": {
+      "message": "Could not run the action: {error}"
+    },
+    "schedule_mode_failed": {
+      "message": "Could not change the mowing mode: {error}"
+    },
+    "schedule_not_loaded": {
+      "message": "The mowing mode cannot be changed yet because the mower has not reported its schedule. Please try again in a moment."
+    },
+    "calendar_no_all_day": {
+      "message": "All-day events are not supported by the mower schedule. Please set a start and end time."
+    },
+    "calendar_unknown_uid": {
+      "message": "Cannot delete this schedule entry: unknown event id \"{uid}\"."
     }
   }
 }

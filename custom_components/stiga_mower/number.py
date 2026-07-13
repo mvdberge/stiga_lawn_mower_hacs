@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.number import (
     NumberDeviceClass,
@@ -93,7 +94,7 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
         description: StigaNumberDescription,
     ) -> None:
         super().__init__(coordinator)
@@ -103,7 +104,7 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
         self._mac = attrs.get("mac_address", "")
         self._attr_unique_id = f"stiga_{self._uuid}_{description.key}"
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
                 return d.get("attributes") or {}
@@ -156,7 +157,7 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected or not self._mac:
             raise HomeAssistantError(
-                f"Cannot set {self.entity_description.key}: MQTT not connected"
+                translation_domain=DOMAIN, translation_key="mqtt_not_connected"
             )
         key = self.entity_description.settings_key
         # cmd_settings_update is more strictly atomic than it appears: any
@@ -167,9 +168,13 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
         try:
             await mqtt.cmd_settings_update(self._mac, settings)
         except Exception as err:
-            raise HomeAssistantError(f"Could not set {self.entity_description.key}: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="set_failed",
+                translation_placeholders={"error": str(err)},
+            ) from err
         self.coordinator.apply_live_settings(self._mac, {key: int(value)})
 
 
-def _dev_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _dev_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))

@@ -303,7 +303,7 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
         description: StigaSensorDescription,
     ) -> None:
         super().__init__(coordinator)
@@ -311,7 +311,7 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         self._uuid = _dev_uuid(device)
         self._attr_unique_id = f"stiga_{self._uuid}_{description.key}"
 
-    def _device_attrs(self) -> dict:
+    def _device_attrs(self) -> dict[str, Any]:
         for d in self.coordinator.data.get("devices", []):
             if _dev_uuid(d) == self._uuid:
                 return d.get("attributes") or {}
@@ -347,7 +347,7 @@ class StigaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorEntity):
         status = data.get("statuses", {}).get(self._uuid)
         if not status:
             return False
-        if status.get("has_data") is False:
+        if status.get("has_data") is False and not self.coordinator.has_data_fresh(self._uuid):
             return False
         if self.entity_description.key in _MQTT_ONLY_SENSOR_KEYS:
             # MQTT-only fields: available whenever the field was received, regardless
@@ -389,7 +389,7 @@ class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorE
     def __init__(
         self,
         coordinator: StigaDataUpdateCoordinator,
-        device: dict,
+        device: dict[str, Any],
         zone_id: int,
     ) -> None:
         super().__init__(coordinator)
@@ -439,7 +439,7 @@ class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorE
             return None
         for e in elements:
             if e["id"] == self._zone_id:
-                return e["area_m2"]
+                return float(e["area_m2"])
         return None
 
     @property
@@ -453,5 +453,5 @@ class StigaZoneAreaSensor(CoordinatorEntity[StigaDataUpdateCoordinator], SensorE
         return {}
 
 
-def _dev_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _dev_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))

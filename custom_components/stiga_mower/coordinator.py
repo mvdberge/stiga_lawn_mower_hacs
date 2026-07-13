@@ -38,7 +38,7 @@ _STALE_DATA_THRESHOLD = timedelta(minutes=10)
 META_REFRESH_INTERVAL = timedelta(hours=6)
 
 
-class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
+class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """
     Central coordinator for all STIGA devices.
 
@@ -75,8 +75,8 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self.api = api
         self.mqtt = mqtt
         self._consecutive_failures = 0
-        self._devices: list[dict] = []
-        self._meta: dict[str, dict] = {}
+        self._devices: list[dict[str, Any]] = []
+        self._meta: dict[str, dict[str, Any]] = {}
         self._meta_next_refresh: datetime | None = None
 
         # Latest MQTT pushes, keyed by MAC address. Status frames feed into
@@ -95,6 +95,13 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         # Timestamp of the last successful REST poll. Used to decide whether
         # cached data is still recent enough to keep entities available.
         self._last_rest_success: datetime | None = None
+
+        # Per-device timestamp of the last time we saw valid telemetry
+        # (a non-empty status that was not explicitly hasData=False). Lets
+        # entities ride out brief `hasData:false` blips from the cloud without
+        # flapping to "unavailable", while still going unavailable once the
+        # mower has genuinely been reporting no data for _STALE_DATA_THRESHOLD.
+        self._last_has_data: dict[str, datetime] = {}
 
         # Last `firmware_version` string we observed per device UUID. HA's
         # device registry only consumes `device_info` at entity-registration
@@ -125,6 +132,20 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             return False
         return dt_util.utcnow() - self._last_rest_success < _STALE_DATA_THRESHOLD
 
+    def has_data_fresh(self, uuid: str) -> bool:
+        """True when the device reported valid telemetry recently enough.
+
+        Mirrors `rest_data_fresh` but per device and keyed on the STIGA
+        `hasData` flag. A single `hasData:false` frame (which the cloud emits
+        intermittently while the mower sleeps or between reports) therefore no
+        longer flaps every entity to "unavailable"; only a sustained absence of
+        valid data past _STALE_DATA_THRESHOLD does.
+        """
+        ts = self._last_has_data.get(uuid)
+        if ts is None:
+            return False
+        return dt_util.utcnow() - ts < _STALE_DATA_THRESHOLD
+
     # -------------------------------------------------------------- MQTT wiring
 
     def attach_mqtt(self, mqtt: StigaMQTT) -> None:
@@ -153,23 +174,32 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         self._publish_update()
 
     def build_settings_payload(self, mac: str, changes: dict[str, Any]) -> dict[str, Any]:
-        """Augment a settings update with the atomic rain/cutting sibling fields.
+        """Augment a settings update with the atomic sibling fields.
 
-        cmd_settings_update treats the rain submsg (field 1) and the cutting
-        submsg (field 4) as globally atomic: if they are missing from an
-        outbound payload, the firmware resets their fields to the proto3
-        default. Empirically this also fires when the write targets a
-        completely unrelated submsg (e.g. push_notifications field 14).
-        This helper backfills the rain/cutting keys from live_settings
-        whenever they are known and not already set explicitly by the caller.
+        cmd_settings_update is more strictly atomic than the protobuf layout
+        suggests: omitting any of fields {1 (rain), 2 (sleep_mode), 4 (cutting),
+        9 (zone_cutting_height_uniform), 11 (firmware-internal varint)} from an
+        outbound payload resets that field firmware-side to the proto3 default.
+        Empirically this fires even when the write targets a completely
+        unrelated submsg (e.g. push_notifications field 14).
+
+        The STIGA.GO app sends all five every time (capture 2026-06-02). We
+        mirror that by backfilling each key from live_settings whenever it is
+        known and not already set explicitly by the caller. unknown_11 is
+        opaque — we never invent a value, we only echo what the firmware sent
+        us; if the robot has not yet produced a SETTINGS frame the field stays
+        absent, which matches the firmware default and is harmless.
         """
         live = self._live_settings.get(mac, {})
         payload = dict(changes)
         for key in (
             "rain_sensor_enabled",
             "rain_sensor_delay_h",
+            "sleep_mode",
             "zone_cutting_height_enabled",
             "cutting_height_mm",
+            "zone_cutting_height_uniform",
+            "unknown_11",
         ):
             if key not in payload and (cur := live.get(key)) is not None:
                 payload[key] = cur
@@ -253,7 +283,9 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
 
     # -------------------------------------------------------------- Build / merge
 
-    def _build_data(self, *, rest_statuses: dict[str, dict] | None = None) -> dict:
+    def _build_data(
+        self, *, rest_statuses: dict[str, dict[str, Any]] | None = None
+    ) -> dict[str, Any]:
         """Assemble the coordinator's `data` dict from REST + live state.
 
         Called both at the end of the regular REST poll (with fresh
@@ -265,7 +297,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         if rest_statuses is None:
             rest_statuses = (self.data or {}).get("statuses", {}) or {}
 
-        statuses: dict[str, dict] = {}
+        statuses: dict[str, dict[str, Any]] = {}
         for device in self._devices:
             uuid = _device_uuid(device)
             if not uuid:
@@ -273,7 +305,12 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             mac = (device.get("attributes") or {}).get("mac_address")
             base = dict(rest_statuses.get(uuid) or {})
             live = self._live_status.get(mac, {}) if mac else {}
-            statuses[uuid] = _merge_live_into_status(base, live)
+            merged = _merge_live_into_status(base, live)
+            statuses[uuid] = merged
+            # Record the moment we last saw valid telemetry so `has_data_fresh`
+            # can debounce transient `hasData:false` blips (see its docstring).
+            if merged and merged.get("has_data") is not False:
+                self._last_has_data[uuid] = dt_util.utcnow()
 
         return {
             "devices": self._devices,
@@ -307,15 +344,22 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
             uuid = _device_uuid(device)
             if not uuid:
                 continue
-            entry: dict = {}
-            extended = await self.api.get_device_extended(uuid)
-            entry.update(_extract_model_name(extended))
-            base_uuid = (device.get("attributes") or {}).get("base_uuid")
-            if base_uuid:
-                perimeter = await self.api.get_perimeter(uuid, base_uuid)
-                entry.update(_extract_perimeter(perimeter))
-            if entry:
-                self._meta[uuid] = entry
+            # Best-effort per device: a malformed response for one mower must
+            # never abort setup or the periodic meta refresh for the others.
+            try:
+                entry: dict[str, Any] = {}
+                extended = await self.api.get_device_extended(uuid)
+                entry.update(_extract_model_name(extended))
+                base_uuid = (device.get("attributes") or {}).get("base_uuid")
+                if base_uuid:
+                    perimeter = await self.api.get_perimeter(uuid, base_uuid)
+                    entry.update(_extract_perimeter(perimeter))
+                if entry:
+                    self._meta[uuid] = entry
+            except Exception as err:
+                # Meta is non-critical: never let one device's malformed response
+                # abort setup or the periodic refresh for the others.
+                _LOGGER.debug("Meta refresh for %s failed (non-fatal): %s", uuid, err)
 
     def _sync_device_registry_firmware(self) -> None:
         """Push firmware_version changes from REST into the device registry.
@@ -368,7 +412,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         if bases:
             self._bases = bases
 
-    async def _async_update_data(self) -> dict:
+    async def _async_update_data(self) -> dict[str, Any]:
         """Refresh devices and status for all known devices.
 
         Transient REST failures (timeouts, 5xx responses) return the last-known
@@ -393,7 +437,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                         self._devices = devices
                         self._sync_device_registry_firmware()
 
-                statuses: dict[str, dict] = {}
+                statuses: dict[str, dict[str, Any]] = {}
                 previous = (self.data or {}).get("statuses", {})
                 status_success = False
                 status_attempted = False
@@ -404,11 +448,25 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
                     status_attempted = True
                     try:
                         status = await self.api.get_device_status(uuid)
-                        status_success = True
                     except StigaApiError as err:
                         _LOGGER.debug("Status fetch for %s failed: %s", uuid, err)
                         last_error = err
                         status = previous.get(uuid, {})
+                    else:
+                        if status:
+                            status_success = True
+                        else:
+                            # HTTP 200 but an unrecognised/degraded body parsed
+                            # to {} — the cloud emits these during instability.
+                            # Treat it like a failed fetch: keep the last good
+                            # snapshot instead of wiping it (which would flap
+                            # every entity to "unavailable" for one cycle).
+                            _LOGGER.debug(
+                                "Status fetch for %s returned an empty payload, keeping cached",
+                                uuid,
+                            )
+                            last_error = last_error or StigaApiError("empty status payload")
+                            status = previous.get(uuid, {})
                     _enrich_status_from_device(status, device)
                     statuses[uuid] = status
 
@@ -452,7 +510,7 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         except (StigaApiError, TimeoutError) as err:
             return self._handle_poll_failure(err)
 
-    def _handle_poll_failure(self, err: Exception) -> dict:
+    def _handle_poll_failure(self, err: Exception) -> dict[str, Any]:
         """Account a failed REST poll: bump failure counter, log, raise/keep.
 
         The ``_last_rest_success`` timestamp is intentionally *not* touched
@@ -491,8 +549,8 @@ class StigaDataUpdateCoordinator(DataUpdateCoordinator[dict]):
         return self.data
 
 
-def _device_uuid(device: dict) -> str:
-    return (device.get("attributes") or {}).get("uuid", "")
+def _device_uuid(device: dict[str, Any]) -> str:
+    return str((device.get("attributes") or {}).get("uuid", ""))
 
 
 # MQTT-only fields that the entity layer pre-Phase-4 doesn't render but
@@ -546,7 +604,7 @@ _STICKY_LIVE_FIELDS = frozenset(
 )
 
 
-def _merge_sticky_live(prev: dict, new: dict) -> dict:
+def _merge_sticky_live(prev: dict[str, Any], new: dict[str, Any]) -> dict[str, Any]:
     """Merge a fresh STATUS frame onto the previous one.
 
     Fields named in ``_STICKY_LIVE_FIELDS`` carry over from ``prev`` when
@@ -560,7 +618,7 @@ def _merge_sticky_live(prev: dict, new: dict) -> dict:
     return merged
 
 
-def _merge_live_into_status(base: dict, live: dict) -> dict:
+def _merge_live_into_status(base: dict[str, Any], live: dict[str, Any]) -> dict[str, Any]:
     """Layer an MQTT status frame on top of the REST status dict.
 
     The entity layer reads from ``current_action``, ``mowing_mode``,
@@ -619,7 +677,7 @@ def _merge_live_into_status(base: dict, live: dict) -> dict:
     return out
 
 
-def _enrich_status_from_device(status: dict, device: dict) -> None:
+def _enrich_status_from_device(status: dict[str, Any], device: dict[str, Any]) -> None:
     """Merge sensor-relevant fields from /api/garage device attributes into status.
 
     The undocumented `/api/garage` endpoint returns attributes like
@@ -646,7 +704,7 @@ def _enrich_status_from_device(status: dict, device: dict) -> None:
             status["dock_firmware"] = dv
 
 
-def _extract_model_name(extended: dict) -> dict:
+def _extract_model_name(extended: dict[str, Any]) -> dict[str, Any]:
     """Pull friendly model name (`A 15v`) from /devices/{uuid} `included[]`."""
     for inc in extended.get("included") or []:
         if inc.get("type") != "DeviceDetails":
@@ -659,12 +717,12 @@ def _extract_model_name(extended: dict) -> dict:
     return {}
 
 
-def _extract_perimeter(perimeter: dict) -> dict:
+def _extract_perimeter(perimeter: dict[str, Any]) -> dict[str, Any]:
     """Flatten /perimeters response into the small set of fields we surface."""
     preview = ((perimeter.get("data") or {}).get("attributes") or {}).get("preview") or {}
     if not preview:
         return {}
-    out: dict = {}
+    out: dict[str, Any] = {}
     if (m2 := preview.get("m2Area")) is not None:
         out["garden_area_m2"] = m2
     zones = preview.get("zones") or {}
@@ -679,7 +737,10 @@ def _extract_perimeter(perimeter: dict) -> dict:
                 "num_points": e["numPoints"],
             }
             for e in elements
-            if isinstance(e, dict) and "id" in e and "m2Area" in e and "numPoints" in e
+            if isinstance(e, dict)
+            and "id" in e
+            and isinstance(e.get("m2Area"), (int, float))
+            and isinstance(e.get("numPoints"), int)
         ]
     obstacles = preview.get("obstacles") or {}
     if (obn := obstacles.get("num")) is not None:

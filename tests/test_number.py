@@ -72,3 +72,15 @@ async def test_number_raises_when_mqtt_disconnected(hass) -> None:
     with pytest.raises(HomeAssistantError) as err:
         await n.async_set_native_value(45)
     assert err.value.translation_key == "mqtt_not_connected"
+
+
+@pytest.mark.asyncio
+async def test_number_rejects_off_grid_cutting_height(hass) -> None:
+    """A value not on the 5 mm grid must be refused, not silently dropped on the wire."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    c = make_coordinator(hass, live_settings={"cutting_height_mm": 40})
+    n = number(c)
+    with pytest.raises(ServiceValidationError):
+        await n.async_set_native_value(22)
+    c.mqtt.cmd_settings_update.assert_not_awaited()

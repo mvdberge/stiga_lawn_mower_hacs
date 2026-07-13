@@ -14,7 +14,7 @@ from homeassistant.components.number import (
 )
 from homeassistant.const import EntityCategory, UnitOfLength
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -154,12 +154,24 @@ class StigaNumber(CoordinatorEntity[StigaDataUpdateCoordinator], NumberEntity):
         return self._native_value()
 
     async def async_set_native_value(self, value: float) -> None:
+        key = self.entity_description.settings_key
+        # HA's number.set_value only validates min/max, not the step, so an
+        # off-grid value (e.g. 22 mm) would reach here and be silently dropped
+        # on the wire while the UI optimistically shows it. Reject it up front.
+        if key == "cutting_height_mm" and int(value) not in CUTTING_HEIGHTS_MM:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_cutting_height",
+                translation_placeholders={
+                    "value": str(int(value)),
+                    "allowed": ", ".join(str(h) for h in CUTTING_HEIGHTS_MM),
+                },
+            )
         mqtt = self.coordinator.mqtt
         if mqtt is None or not mqtt.connected or not self._mac:
             raise HomeAssistantError(
                 translation_domain=DOMAIN, translation_key="mqtt_not_connected"
             )
-        key = self.entity_description.settings_key
         # cmd_settings_update is more strictly atomic than it appears: any
         # write omitting the rain/cutting submessages resets them on the
         # firmware to default — even when the write targets a different

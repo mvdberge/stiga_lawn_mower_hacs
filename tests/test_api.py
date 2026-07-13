@@ -346,3 +346,78 @@ async def test_authenticate_wraps_malformed_json_body() -> None:
     api = StigaAPI(email=TEST_EMAIL, password=TEST_PASSWORD, session=session)
     with pytest.raises(StigaApiError):
         await api.authenticate()
+
+
+# ---------------------------------------------------------------- refresh token
+
+
+async def test_login_stores_refresh_token() -> None:
+    """_login persists the camelCase refreshToken from the verifyPassword body."""
+    resp = MagicMock()
+    resp.status = 200
+    resp.json = AsyncMock(return_value={"idToken": "T", "expiresIn": "3600", "refreshToken": "R"})
+    session = _mock_session_post(resp)
+    api = StigaAPI(email=TEST_EMAIL, password=TEST_PASSWORD, session=session)
+
+    token = await api.get_token()
+
+    assert token == "T"
+    assert api._refresh_token == "R"
+
+
+async def test_get_token_uses_refresh_when_available() -> None:
+    """An expired token with a stored refresh token triggers a securetoken
+    refresh, not a full verifyPassword login."""
+    from custom_components.stiga_mower.const import (
+        FIREBASE_AUTH_URL,
+        FIREBASE_REFRESH_URL,
+    )
+
+    resp = MagicMock()
+    resp.status = 200
+    # securetoken response uses snake_case keys, unlike verifyPassword.
+    resp.json = AsyncMock(
+        return_value={"id_token": "T2", "expires_in": "3600", "refresh_token": "R2"}
+    )
+    session = _mock_session_post(resp)
+    api = StigaAPI(email=TEST_EMAIL, password=TEST_PASSWORD, session=session)
+    api._token = "old"
+    api._token_expiry = 0.0  # force the cached token to be considered expired
+    api._refresh_token = "R1"
+
+    token = await api.get_token()
+
+    assert token == "T2"
+    assert api._refresh_token == "R2"
+    urls = [call.args[0] for call in session.post.call_args_list]
+    assert FIREBASE_REFRESH_URL in urls
+    assert FIREBASE_AUTH_URL not in urls
+
+
+async def test_get_token_falls_back_to_login_when_refresh_fails() -> None:
+    """A failed securetoken refresh (HTTP 400) falls back to a full login."""
+    from custom_components.stiga_mower.const import (
+        FIREBASE_AUTH_URL,
+        FIREBASE_REFRESH_URL,
+    )
+
+    refresh_resp = MagicMock()
+    refresh_resp.status = 400
+    refresh_resp.json = AsyncMock(return_value={"error": {"message": "TOKEN_EXPIRED"}})
+    login_resp = MagicMock()
+    login_resp.status = 200
+    login_resp.json = AsyncMock(
+        return_value={"idToken": "T3", "expiresIn": "3600", "refreshToken": "R3"}
+    )
+    session = _mock_session_post_sequence([refresh_resp, login_resp])
+    api = StigaAPI(email=TEST_EMAIL, password=TEST_PASSWORD, session=session)
+    api._token = "old"
+    api._token_expiry = 0.0  # force the cached token to be considered expired
+    api._refresh_token = "R1"
+
+    token = await api.get_token()
+
+    assert token == "T3"
+    assert api._refresh_token == "R3"
+    urls = [call.args[0] for call in session.post.call_args_list]
+    assert urls == [FIREBASE_REFRESH_URL, FIREBASE_AUTH_URL]
